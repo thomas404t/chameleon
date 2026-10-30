@@ -1,5 +1,5 @@
 {
- "updated": "2026-10-30T07:32:31",
+ "updated": "2026-10-30T07:34:03",
  "champion": {
   "gen": 4,
   "name": "gen4-S",
@@ -215,6 +215,17 @@
   },
   {
    "gen": 5,
+   "branch": "gen-5-consolidation",
+   "tag": "gen-5-score-89.48",
+   "winner": "gen4-S",
+   "fitness": 89.484,
+   "delta": 0.0,
+   "seed_fitness": 89.484,
+   "regression": 87.076,
+   "strength": 0.26249999999999996
+  },
+  {
+   "gen": 6,
    "branch": null,
    "tag": null,
    "winner": "gen4-S",
@@ -222,7 +233,7 @@
    "delta": 0.0,
    "seed_fitness": 89.484,
    "regression": 87.076,
-   "strength": 0.26249999999999996
+   "strength": 0.19687499999999997
   }
  ],
  "ranking": [
@@ -246,6 +257,23 @@
     ]
    },
    "fitness": 89.595
+  },
+  {
+   "gen": 6,
+   "name": "gen6-B1",
+   "family": "B",
+   "strategy": "grid-zoning",
+   "changed": {
+    "w_struct": [
+     0.12,
+     0.0781
+    ],
+    "w_order": [
+     0.1309,
+     0.1756
+    ]
+   },
+   "fitness": 89.587
   },
   {
    "gen": 5,
@@ -332,6 +360,128 @@
    "fitness": 89.484
   },
   {
+   "gen": 6,
+   "name": "gen6-C2",
+   "family": "C",
+   "strategy": "type-flow",
+   "changed": {
+    "w_leg": [
+     0.22,
+     0.1918
+    ],
+    "min_font_frac": [
+     0.09,
+     0.1117
+    ],
+    "type_gamma": [
+     0.6,
+     0.6308
+    ],
+    "priority_boost": [
+     1.6,
+     1.0
+    ]
+   },
+   "fitness": 89.484
+  },
+  {
+   "gen": 6,
+   "name": "gen6-C3",
+   "family": "C",
+   "strategy": "type-flow",
+   "changed": {
+    "priority_boost": [
+     1.6,
+     1.8187
+    ],
+    "w_leg": [
+     0.22,
+     0.1279
+    ]
+   },
+   "fitness": 89.482
+  },
+  {
+   "gen": 6,
+   "name": "gen6-C1",
+   "family": "C",
+   "strategy": "type-flow",
+   "changed": {
+    "headline_lead": [
+     1.0,
+     0.688
+    ],
+    "type_k": [
+     6.0,
+     7.0319
+    ],
+    "w_leg": [
+     0.22,
+     0.2126
+    ]
+   },
+   "fitness": 89.46
+  },
+  {
+   "gen": 6,
+   "name": "gen6-B3",
+   "family": "B",
+   "strategy": "grid-zoning",
+   "changed": {
+    "w_fill": [
+     0.09,
+     0.0378
+    ]
+   },
+   "fitness": 89.459
+  },
+  {
+   "gen": 6,
+   "name": "gen6-B2",
+   "family": "B",
+   "strategy": "grid-zoning",
+   "changed": {
+    "symmetry": [
+     0.6819,
+     0.8941
+    ],
+    "w_fill": [
+     0.09,
+     0.1807
+    ],
+    "zone_top_align": [
+     0.2183,
+     0.2683
+    ]
+   },
+   "fitness": 89.435
+  },
+  {
+   "gen": 6,
+   "name": "gen6-A1",
+   "family": "A",
+   "strategy": "hero-anchor",
+   "changed": {
+    "optical_lift": [
+     0.0,
+     0.0832
+    ],
+    "hero_mass": [
+     0.0,
+     1.6571
+    ],
+    "w_hero": [
+     0.1177,
+     0.1551
+    ],
+    "focus_blend": [
+     0.5,
+     0.472
+    ]
+   },
+   "fitness": 89.419
+  },
+  {
    "gen": 5,
    "name": "gen5-C2",
    "family": "C",
@@ -399,6 +549,48 @@
    "fitness": 89.375
   },
   {
+   "gen": 6,
+   "name": "gen6-A3",
+   "family": "A",
+   "strategy": "hero-anchor",
+   "changed": {
+    "image_floor": [
+     0.3,
+     0.3069
+    ],
+    "focus_blend": [
+     0.5,
+     0.9349
+    ]
+   },
+   "fitness": 89.373
+  },
+  {
+   "gen": 6,
+   "name": "gen6-D1",
+   "family": "D",
+   "strategy": "elastic-repulsion",
+   "changed": {
+    "button_gap": [
+     0.3,
+     0.269
+    ],
+    "gap": [
+     0.0227,
+     0.0265
+    ],
+    "pad_y": [
+     3.0029,
+     3.1323
+    ],
+    "relax_spring": [
+     0.0,
+     0.7892
+    ]
+   },
+   "fitness": 89.371
+  },
+  {
    "gen": 5,
    "name": "gen5-D1",
    "family": "D",
@@ -418,6 +610,31 @@
     ]
    },
    "fitness": 89.339
+  },
+  {
+   "gen": 6,
+   "name": "gen6-A2",
+   "family": "A",
+   "strategy": "hero-anchor",
+   "changed": {
+    "hero_mass": [
+     0.0,
+     2.4874
+    ],
+    "optical_lift": [
+     0.0,
+     0.0573
+    ],
+    "focus_blend": [
+     0.5,
+     0.6353
+    ],
+    "logo_area": [
+     0.0307,
+     0.0422
+    ]
+   },
+   "fitness": 89.324
   },
   {
    "gen": 5,
@@ -460,6 +677,31 @@
     ]
    },
    "fitness": 89.267
+  },
+  {
+   "gen": 6,
+   "name": "gen6-D3",
+   "family": "D",
+   "strategy": "elastic-repulsion",
+   "changed": {
+    "button_gap": [
+     0.3,
+     0.15
+    ],
+    "body_gap_cap": [
+     1.0732,
+     1.4989
+    ],
+    "margin": [
+     0.0398,
+     0.0292
+    ],
+    "gap": [
+     0.0227,
+     0.0214
+    ]
+   },
+   "fitness": 89.239
   },
   {
    "gen": 3,
@@ -607,6 +849,31 @@
     ]
    },
    "fitness": 89.21
+  },
+  {
+   "gen": 6,
+   "name": "gen6-D2",
+   "family": "D",
+   "strategy": "elastic-repulsion",
+   "changed": {
+    "body_gap_cap": [
+     1.0732,
+     1.029
+    ],
+    "pad_y": [
+     3.0029,
+     2.9839
+    ],
+    "gap": [
+     0.0227,
+     0.0155
+    ],
+    "relax_spring": [
+     0.0,
+     0.414
+    ]
+   },
+   "fitness": 89.166
   },
   {
    "gen": 3,
