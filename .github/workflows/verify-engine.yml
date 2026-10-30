@@ -1,0 +1,93 @@
+name: verify-engine
+
+# Verifies the engine on real linux/amd64 hardware, exactly the way stage-one
+# scoring runs it. Apple Silicon dev machines cannot do this locally: skia
+# segfaults under QEMU amd64 emulation before the engine is even reached.
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  amd64:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Confirm runner really is amd64
+        run: |
+          uname -m
+          test "$(uname -m)" = "x86_64" || { echo "not an amd64 runner"; exit 1; }
+
+      - name: Build image
+        run: docker build --platform linux/amd64 -t chameleon-engine .
+
+      - name: Run engine offline (--network none)
+        run: |
+          mkdir -p output
+          timeout 600 docker run --rm --network none -e PYTHONUNBUFFERED=1 \
+            -v "$PWD/input:/app/input" \
+            -v "$PWD/output:/app/output" \
+            chameleon-engine
+
+      - name: Assert every task produced a real JSON + PNG
+        run: |
+          fail=0
+          for f in input/*.json; do
+            b=$(basename "$f" .json)
+            for ext in json png; do
+              o="output/${b}_output.${ext}"
+              if [ ! -s "$o" ]; then
+                echo "::error::missing or empty: $o"; fail=1
+              else
+                echo "ok: $o ($(stat -c%s "$o") bytes)"
+              fi
+            done
+            png="output/${b}_output.png"
+            sz=$(stat -c%s "$png" 2>/dev/null || echo 0)
+            # A box-and-label placeholder render (the silent cr-renderer import
+            # fallback) comes out far smaller than a real one.
+            if [ "$sz" -lt 2000 ]; then
+              echo "::error::suspiciously small PNG, likely the placeholder fallback: $png ($sz bytes)"; fail=1
+            fi
+          done
+          exit $fail
+
+      - name: Hard-rule evaluation
+        run: |
+          # tools/ is deliberately not baked into the image, so mount it.
+          docker run --rm --network none -e PYTHONUNBUFFERED=1 \
+            -v "$PWD/input:/app/input" \
+            -v "$PWD/output:/app/output" \
+            -v "$PWD/tools:/app/tools" \
+            --entrypoint python chameleon-engine \
+            -m tools.evaluate input output | tee eval.txt
+          python3 - <<'PY'
+          import json, sys
+          mean = [l for l in open("eval.txt") if l.startswith("MEAN")]
+          if not mean:
+              sys.exit("::error::evaluator produced no MEAN line")
+          m = json.loads(mean[-1].split("MEAN", 1)[1].strip())
+          print("mean metrics:", m)
+          if m.get("hard_fail", 1) != 0.0:
+              sys.exit(f"::error::hard rule violations: {m['hard_fail']}")
+          if m.get("collisions", 1) != 0.0:
+              sys.exit(f"::error::collisions: {m['collisions']}")
+          PY
+
+      - name: Fuzz (500 random designs x random targets)
+        run: |
+          timeout 900 docker run --rm --network none -e PYTHONUNBUFFERED=1 \
+            -v "$PWD/tools:/app/tools" \
+            --entrypoint python chameleon-engine \
+            -m tools.fuzz 500
+
+      - name: Upload rendered output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: engine-output-amd64
+          path: output/
