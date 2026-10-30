@@ -96,7 +96,7 @@ GENOME = {
     'split_bias': -0.8,
     'zone_top_align': 0.2183,
     'zone_header': 1.0,
-    'banner_spread': 1.0,
+    'banner_spread': 0.9031,
     'panel_reflow': 1.0,
     'headline_lead': 1.0,
     'relax_iters': 10,

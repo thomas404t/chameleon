@@ -1,9 +1,9 @@
 {
- "updated": "2026-10-30T07:30:33",
+ "updated": "2026-10-30T07:41:42",
  "champion": {
-  "gen": 4,
-  "name": "gen4-S",
-  "fitness": 89.484,
+  "gen": 7,
+  "name": "gen7-B3",
+  "fitness": 90.337,
   "genome": {
    "margin": 0.0398,
    "gap": 0.0227,
@@ -33,56 +33,60 @@
    "focus_blend": 0.5,
    "optical_lift": 0.0,
    "hero_mass": 0.0,
+   "ink_v": 0.0,
+   "shortcut_ink": 1.0,
    "split_bias": -0.8,
    "zone_top_align": 0.2183,
    "zone_header": 1.0,
+   "banner_spread": 0.9031,
+   "panel_reflow": 1.0,
    "headline_lead": 1.0,
    "relax_iters": 10,
    "relax_clear": 0.0077,
    "relax_spring": 0.0
   },
-  "engine": "/Users/thomasi/Desktop/Github/chameleon/benchmarks/runs/gen-4/S/resize.py",
+  "engine": "/Users/thomasi/Desktop/Github/chameleon/benchmarks/runs/gen-7/B3/resize.py",
   "fixtures": {
-   "mean_total": 89.484,
-   "hierarchy": 23.391,
-   "optical": 18.971,
-   "space": 23.207,
-   "readability": 23.915,
+   "mean_total": 90.337,
+   "hierarchy": 23.527,
+   "optical": 19.304,
+   "space": 23.387,
+   "readability": 24.118,
    "overflow": 0,
    "collisions": 0,
    "crashes": 0,
    "hard_violations": 0,
    "critical_tasks": 0,
-   "max_secs": 2.45,
+   "max_secs": 3.88,
    "by_target": {
-    "16x9_landscape": 88.352,
-    "1x1_square": 91.106,
+    "16x9_landscape": 89.67,
+    "1x1_square": 90.957,
     "3x4_poster": 92.562,
-    "4x1_header": 89.494,
+    "4x1_header": 89.664,
     "4x5_portrait": 92.023,
-    "8x1_leaderboard": 80.066,
+    "8x1_leaderboard": 84.696,
     "9x16_story": 92.783
    },
    "by_tier": {
-    "advanced": 89.43,
-    "core": 89.214,
-    "warmup": 89.808
+    "advanced": 89.301,
+    "core": 89.929,
+    "warmup": 91.779
    }
   },
   "regression": {
-   "mean_total": 87.076,
-   "hierarchy": 22.677,
-   "optical": 18.37,
-   "space": 22.825,
-   "readability": 23.204,
+   "mean_total": 87.718,
+   "hierarchy": 22.788,
+   "optical": 18.633,
+   "space": 22.944,
+   "readability": 23.353,
    "overflow": 1,
    "collisions": 0,
    "crashes": 0,
    "hard_violations": 0,
    "critical_tasks": 1,
-   "max_secs": 3.22
+   "max_secs": 3.09
   },
-  "strategy": "synthesis"
+  "strategy": "grid-zoning"
  },
  "baseline": {
   "gen": 0,
@@ -204,17 +208,425 @@
   },
   {
    "gen": 4,
-   "branch": null,
-   "tag": null,
+   "branch": "gen-4-synthesis",
+   "tag": "gen-4-score-89.48",
    "winner": "gen4-S",
    "fitness": 89.484,
    "delta": 0.249,
    "seed_fitness": 89.235,
    "regression": 87.076,
    "strength": 0.35
+  },
+  {
+   "gen": 5,
+   "branch": "gen-5-consolidation",
+   "tag": "gen-5-score-89.48",
+   "winner": "gen4-S",
+   "fitness": 89.484,
+   "delta": 0.0,
+   "seed_fitness": 89.484,
+   "regression": 87.076,
+   "strength": 0.26249999999999996
+  },
+  {
+   "gen": 6,
+   "branch": "gen-6-consolidation",
+   "tag": "gen-6-score-89.48",
+   "winner": "gen4-S",
+   "fitness": 89.484,
+   "delta": 0.0,
+   "seed_fitness": 89.484,
+   "regression": 87.076,
+   "strength": 0.19687499999999997
+  },
+  {
+   "gen": 7,
+   "branch": null,
+   "tag": null,
+   "winner": "gen7-B3",
+   "fitness": 90.337,
+   "delta": 0.087,
+   "seed_fitness": 90.25,
+   "regression": 87.718,
+   "strength": 0.275
   }
  ],
  "ranking": [
+  {
+   "gen": 7,
+   "name": "gen7-B3",
+   "family": "B",
+   "strategy": "grid-zoning",
+   "changed": {
+    "banner_spread": [
+     1.0,
+     0.9031
+    ]
+   },
+   "fitness": 90.337
+  },
+  {
+   "gen": 7,
+   "name": "gen7-A4",
+   "family": "A",
+   "strategy": "hero-anchor",
+   "changed": {
+    "focus_blend": [
+     0.5,
+     0.0
+    ],
+    "hero_mass": [
+     0.0,
+     0.5926
+    ]
+   },
+   "fitness": 90.271
+  },
+  {
+   "gen": 7,
+   "name": "gen7-D2",
+   "family": "D",
+   "strategy": "elastic-repulsion",
+   "changed": {
+    "body_gap_cap": [
+     1.0732,
+     0.9521
+    ],
+    "relax_clear": [
+     0.0077,
+     0.0191
+    ],
+    "hero_mass": [
+     0.0,
+     2.306
+    ]
+   },
+   "fitness": 90.269
+  },
+  {
+   "gen": 7,
+   "name": "gen7-A2",
+   "family": "A",
+   "strategy": "hero-anchor",
+   "changed": {
+    "w_hero": [
+     0.1177,
+     0.16
+    ],
+    "focus_blend": [
+     0.5,
+     0.4723
+    ],
+    "w_bal": [
+     0.09,
+     0.0967
+    ]
+   },
+   "fitness": 90.255
+  },
+  {
+   "gen": 7,
+   "name": "gen7-C1",
+   "family": "C",
+   "strategy": "type-flow",
+   "changed": {
+    "w_leg": [
+     0.22,
+     0.3115
+    ],
+    "text_gap": [
+     1.0,
+     0.8474
+    ],
+    "headline_lead": [
+     1.0,
+     1.3463
+    ],
+    "w_size": [
+     0.18,
+     0.2172
+    ],
+    "w_order": [
+     0.1309,
+     0.1537
+    ]
+   },
+   "fitness": 90.215
+  },
+  {
+   "gen": 7,
+   "name": "gen7-B2",
+   "family": "B",
+   "strategy": "grid-zoning",
+   "changed": {
+    "symmetry": [
+     0.6819,
+     0.9252
+    ],
+    "w_struct": [
+     0.12,
+     0.1228
+    ]
+   },
+   "fitness": 90.198
+  },
+  {
+   "gen": 7,
+   "name": "gen7-B4",
+   "family": "B",
+   "strategy": "grid-zoning",
+   "changed": {
+    "w_struct": [
+     0.12,
+     0.0965
+    ],
+    "col_gap": [
+     0.01,
+     0.0251
+    ]
+   },
+   "fitness": 90.168
+  },
+  {
+   "gen": 7,
+   "name": "gen7-C4",
+   "family": "C",
+   "strategy": "type-flow",
+   "changed": {
+    "priority_boost": [
+     1.6,
+     2.1123
+    ],
+    "w_size": [
+     0.18,
+     0.2264
+    ],
+    "min_font": [
+     11.0,
+     8.0
+    ],
+    "min_font_frac": [
+     0.09,
+     0.0613
+    ]
+   },
+   "fitness": 90.1
+  },
+  {
+   "gen": 7,
+   "name": "gen7-C2",
+   "family": "C",
+   "strategy": "type-flow",
+   "changed": {
+    "type_k": [
+     6.0,
+     3.7464
+    ],
+    "w_size": [
+     0.18,
+     0.1129
+    ]
+   },
+   "fitness": 90.072
+  },
+  {
+   "gen": 7,
+   "name": "gen7-D4",
+   "family": "D",
+   "strategy": "elastic-repulsion",
+   "changed": {
+    "body_gap_cap": [
+     1.0732,
+     0.8
+    ],
+    "gap": [
+     0.0227,
+     0.0148
+    ]
+   },
+   "fitness": 90.015
+  },
+  {
+   "gen": 7,
+   "name": "gen7-C3",
+   "family": "C",
+   "strategy": "type-flow",
+   "changed": {
+    "min_font_frac": [
+     0.09,
+     0.05
+    ],
+    "type_k": [
+     6.0,
+     7.9694
+    ],
+    "min_font": [
+     11.0,
+     9.8308
+    ]
+   },
+   "fitness": 90.01
+  },
+  {
+   "gen": 7,
+   "name": "gen7-A1",
+   "family": "A",
+   "strategy": "hero-anchor",
+   "changed": {
+    "image_floor": [
+     0.3,
+     0.2578
+    ],
+    "optical_lift": [
+     0.0,
+     0.1079
+    ],
+    "hero_floor": [
+     0.6027,
+     0.75
+    ],
+    "ink_v": [
+     0.0,
+     1.0
+    ]
+   },
+   "fitness": 89.99
+  },
+  {
+   "gen": 7,
+   "name": "gen7-A3",
+   "family": "A",
+   "strategy": "hero-anchor",
+   "changed": {
+    "hero_floor": [
+     0.6027,
+     0.6806
+    ],
+    "optical_lift": [
+     0.0,
+     0.0907
+    ],
+    "hero_mass": [
+     0.0,
+     2.2527
+    ]
+   },
+   "fitness": 89.978
+  },
+  {
+   "gen": 7,
+   "name": "gen7-D1",
+   "family": "D",
+   "strategy": "elastic-repulsion",
+   "changed": {
+    "pad_y": [
+     3.0029,
+     3.4674
+    ],
+    "body_gap_cap": [
+     1.0732,
+     1.1318
+    ]
+   },
+   "fitness": 89.939
+  },
+  {
+   "gen": 7,
+   "name": "gen7-B1",
+   "family": "B",
+   "strategy": "grid-zoning",
+   "changed": {
+    "symmetry": [
+     0.6819,
+     0.328
+    ],
+    "zone_top_align": [
+     0.2183,
+     0.8449
+    ],
+    "brand_weight": [
+     0.3,
+     0.3552
+    ]
+   },
+   "fitness": 89.677
+  },
+  {
+   "gen": 5,
+   "name": "gen5-C3",
+   "family": "C",
+   "strategy": "type-flow",
+   "changed": {
+    "text_gap": [
+     1.0,
+     0.8204
+    ],
+    "w_leg": [
+     0.22,
+     0.3208
+    ],
+    "w_size": [
+     0.18,
+     0.32
+    ]
+   },
+   "fitness": 89.595
+  },
+  {
+   "gen": 6,
+   "name": "gen6-B1",
+   "family": "B",
+   "strategy": "grid-zoning",
+   "changed": {
+    "w_struct": [
+     0.12,
+     0.0781
+    ],
+    "w_order": [
+     0.1309,
+     0.1756
+    ]
+   },
+   "fitness": 89.587
+  },
+  {
+   "gen": 5,
+   "name": "gen5-A2",
+   "family": "A",
+   "strategy": "hero-anchor",
+   "changed": {
+    "image_floor": [
+     0.3,
+     0.3606
+    ],
+    "w_hero": [
+     0.1177,
+     0.0866
+    ],
+    "hero_mass": [
+     0.0,
+     1.6992
+    ]
+   },
+   "fitness": 89.512
+  },
+  {
+   "gen": 5,
+   "name": "gen5-A3",
+   "family": "A",
+   "strategy": "hero-anchor",
+   "changed": {
+    "hero_mass": [
+     0.0,
+     1.0938
+    ],
+    "focus_blend": [
+     0.5,
+     0.4314
+    ]
+   },
+   "fitness": 89.509
+  },
   {
    "gen": 4,
    "name": "gen4-S",
@@ -247,6 +659,166 @@
     ]
    },
    "fitness": 89.484
+  },
+  {
+   "gen": 5,
+   "name": "gen5-B1",
+   "family": "B",
+   "strategy": "grid-zoning",
+   "changed": {
+    "w_fill": [
+     0.09,
+     0.1053
+    ]
+   },
+   "fitness": 89.484
+  },
+  {
+   "gen": 6,
+   "name": "gen6-C2",
+   "family": "C",
+   "strategy": "type-flow",
+   "changed": {
+    "w_leg": [
+     0.22,
+     0.1918
+    ],
+    "min_font_frac": [
+     0.09,
+     0.1117
+    ],
+    "type_gamma": [
+     0.6,
+     0.6308
+    ],
+    "priority_boost": [
+     1.6,
+     1.0
+    ]
+   },
+   "fitness": 89.484
+  },
+  {
+   "gen": 6,
+   "name": "gen6-C3",
+   "family": "C",
+   "strategy": "type-flow",
+   "changed": {
+    "priority_boost": [
+     1.6,
+     1.8187
+    ],
+    "w_leg": [
+     0.22,
+     0.1279
+    ]
+   },
+   "fitness": 89.482
+  },
+  {
+   "gen": 6,
+   "name": "gen6-C1",
+   "family": "C",
+   "strategy": "type-flow",
+   "changed": {
+    "headline_lead": [
+     1.0,
+     0.688
+    ],
+    "type_k": [
+     6.0,
+     7.0319
+    ],
+    "w_leg": [
+     0.22,
+     0.2126
+    ]
+   },
+   "fitness": 89.46
+  },
+  {
+   "gen": 6,
+   "name": "gen6-B3",
+   "family": "B",
+   "strategy": "grid-zoning",
+   "changed": {
+    "w_fill": [
+     0.09,
+     0.0378
+    ]
+   },
+   "fitness": 89.459
+  },
+  {
+   "gen": 6,
+   "name": "gen6-B2",
+   "family": "B",
+   "strategy": "grid-zoning",
+   "changed": {
+    "symmetry": [
+     0.6819,
+     0.8941
+    ],
+    "w_fill": [
+     0.09,
+     0.1807
+    ],
+    "zone_top_align": [
+     0.2183,
+     0.2683
+    ]
+   },
+   "fitness": 89.435
+  },
+  {
+   "gen": 6,
+   "name": "gen6-A1",
+   "family": "A",
+   "strategy": "hero-anchor",
+   "changed": {
+    "optical_lift": [
+     0.0,
+     0.0832
+    ],
+    "hero_mass": [
+     0.0,
+     1.6571
+    ],
+    "w_hero": [
+     0.1177,
+     0.1551
+    ],
+    "focus_blend": [
+     0.5,
+     0.472
+    ]
+   },
+   "fitness": 89.419
+  },
+  {
+   "gen": 5,
+   "name": "gen5-C2",
+   "family": "C",
+   "strategy": "type-flow",
+   "changed": {
+    "headline_lead": [
+     1.0,
+     0.6
+    ],
+    "type_gamma": [
+     0.6,
+     0.6886
+    ],
+    "text_gap": [
+     1.0,
+     0.8071
+    ],
+    "priority_boost": [
+     1.6,
+     1.7122
+    ]
+   },
+   "fitness": 89.395
   },
   {
    "gen": 4,
@@ -289,6 +861,186 @@
     ]
    },
    "fitness": 89.375
+  },
+  {
+   "gen": 6,
+   "name": "gen6-A3",
+   "family": "A",
+   "strategy": "hero-anchor",
+   "changed": {
+    "image_floor": [
+     0.3,
+     0.3069
+    ],
+    "focus_blend": [
+     0.5,
+     0.9349
+    ]
+   },
+   "fitness": 89.373
+  },
+  {
+   "gen": 6,
+   "name": "gen6-D1",
+   "family": "D",
+   "strategy": "elastic-repulsion",
+   "changed": {
+    "button_gap": [
+     0.3,
+     0.269
+    ],
+    "gap": [
+     0.0227,
+     0.0265
+    ],
+    "pad_y": [
+     3.0029,
+     3.1323
+    ],
+    "relax_spring": [
+     0.0,
+     0.7892
+    ]
+   },
+   "fitness": 89.371
+  },
+  {
+   "gen": 7,
+   "name": "gen7-D3",
+   "family": "D",
+   "strategy": "elastic-repulsion",
+   "changed": {
+    "relax_iters": [
+     10,
+     12
+    ],
+    "button_gap": [
+     0.3,
+     0.3362
+    ],
+    "margin": [
+     0.0398,
+     0.0542
+    ],
+    "relax_clear": [
+     0.0077,
+     0.005
+    ]
+   },
+   "fitness": 89.351
+  },
+  {
+   "gen": 5,
+   "name": "gen5-D1",
+   "family": "D",
+   "strategy": "elastic-repulsion",
+   "changed": {
+    "relax_iters": [
+     10,
+     12
+    ],
+    "gap": [
+     0.0227,
+     0.0211
+    ],
+    "relax_spring": [
+     0.0,
+     0.5384
+    ]
+   },
+   "fitness": 89.339
+  },
+  {
+   "gen": 6,
+   "name": "gen6-A2",
+   "family": "A",
+   "strategy": "hero-anchor",
+   "changed": {
+    "hero_mass": [
+     0.0,
+     2.4874
+    ],
+    "optical_lift": [
+     0.0,
+     0.0573
+    ],
+    "focus_blend": [
+     0.5,
+     0.6353
+    ],
+    "logo_area": [
+     0.0307,
+     0.0422
+    ]
+   },
+   "fitness": 89.324
+  },
+  {
+   "gen": 5,
+   "name": "gen5-B3",
+   "family": "B",
+   "strategy": "grid-zoning",
+   "changed": {
+    "w_struct": [
+     0.12,
+     0.04
+    ],
+    "split_bias": [
+     -0.8,
+     -0.6085
+    ]
+   },
+   "fitness": 89.271
+  },
+  {
+   "gen": 5,
+   "name": "gen5-D3",
+   "family": "D",
+   "strategy": "elastic-repulsion",
+   "changed": {
+    "body_gap_cap": [
+     1.0732,
+     0.9399
+    ],
+    "margin": [
+     0.0398,
+     0.0311
+    ],
+    "relax_clear": [
+     0.0077,
+     0.0134
+    ],
+    "relax_spring": [
+     0.0,
+     0.5168
+    ]
+   },
+   "fitness": 89.267
+  },
+  {
+   "gen": 6,
+   "name": "gen6-D3",
+   "family": "D",
+   "strategy": "elastic-repulsion",
+   "changed": {
+    "button_gap": [
+     0.3,
+     0.15
+    ],
+    "body_gap_cap": [
+     1.0732,
+     1.4989
+    ],
+    "margin": [
+     0.0398,
+     0.0292
+    ],
+    "gap": [
+     0.0227,
+     0.0214
+    ]
+   },
+   "fitness": 89.239
   },
   {
    "gen": 3,
@@ -400,6 +1152,23 @@
    "fitness": 89.221
   },
   {
+   "gen": 5,
+   "name": "gen5-C1",
+   "family": "C",
+   "strategy": "type-flow",
+   "changed": {
+    "type_k": [
+     6.0,
+     10.0
+    ],
+    "min_font_frac": [
+     0.09,
+     0.05
+    ]
+   },
+   "fitness": 89.219
+  },
+  {
    "gen": 4,
    "name": "gen4-B2",
    "family": "B",
@@ -419,6 +1188,31 @@
     ]
    },
    "fitness": 89.21
+  },
+  {
+   "gen": 6,
+   "name": "gen6-D2",
+   "family": "D",
+   "strategy": "elastic-repulsion",
+   "changed": {
+    "body_gap_cap": [
+     1.0732,
+     1.029
+    ],
+    "pad_y": [
+     3.0029,
+     2.9839
+    ],
+    "gap": [
+     0.0227,
+     0.0155
+    ],
+    "relax_spring": [
+     0.0,
+     0.414
+    ]
+   },
+   "fitness": 89.166
   },
   {
    "gen": 3,
@@ -444,6 +1238,23 @@
     ]
    },
    "fitness": 89.159
+  },
+  {
+   "gen": 5,
+   "name": "gen5-A1",
+   "family": "A",
+   "strategy": "hero-anchor",
+   "changed": {
+    "w_bal": [
+     0.09,
+     0.0599
+    ],
+    "logo_area": [
+     0.0307,
+     0.0483
+    ]
+   },
+   "fitness": 89.122
   },
   {
    "gen": 4,
@@ -618,6 +1429,35 @@
    "fitness": 89.048
   },
   {
+   "gen": 5,
+   "name": "gen5-S",
+   "family": "S",
+   "strategy": "synthesis",
+   "changed": {
+    "min_font": [
+     11.0,
+     8.0
+    ],
+    "type_gamma": [
+     0.6,
+     0.5444
+    ],
+    "w_order": [
+     0.1309,
+     0.119
+    ],
+    "w_size": [
+     0.18,
+     0.2827
+    ],
+    "zone_top_align": [
+     0.2183,
+     0.0442
+    ]
+   },
+   "fitness": 89.043
+  },
+  {
    "gen": 3,
    "name": "gen3-C1",
    "family": "C",
@@ -721,6 +1561,27 @@
     ]
    },
    "fitness": 88.948
+  },
+  {
+   "gen": 5,
+   "name": "gen5-D2",
+   "family": "D",
+   "strategy": "elastic-repulsion",
+   "changed": {
+    "gap": [
+     0.0227,
+     0.0298
+    ],
+    "margin": [
+     0.0398,
+     0.0477
+    ],
+    "relax_clear": [
+     0.0077,
+     0.005
+    ]
+   },
+   "fitness": 88.912
   },
   {
    "gen": 3,
@@ -1122,6 +1983,27 @@
     ]
    },
    "fitness": 88.603
+  },
+  {
+   "gen": 5,
+   "name": "gen5-B2",
+   "family": "B",
+   "strategy": "grid-zoning",
+   "changed": {
+    "w_struct": [
+     0.12,
+     0.25
+    ],
+    "w_fill": [
+     0.09,
+     0.02
+    ],
+    "split_bias": [
+     -0.8,
+     -0.2695
+    ]
+   },
+   "fitness": 88.591
   },
   {
    "gen": 1,
