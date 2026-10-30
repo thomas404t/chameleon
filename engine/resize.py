@@ -68,6 +68,8 @@ TYPE_K = 6.0
 
 # Minimum spacing between neighbouring buttons / badges, as a share of their height.
 BUTTON_GAP = 0.3
+# Short banners: extra type scale for the headline and call to action
+PRIORITY_BOOST = 1.6
 
 # --------------------------------------------------------------------------
 # Text measurement (uses the renderer's own wrapping so heights are exact)
@@ -98,14 +100,23 @@ def _style(el: dict) -> tuple[str, str]:
     return weight, style
 
 
+@lru_cache(maxsize=50_000)
+def _char_widths(content: str, family: str, weight: str, style: str, size: float) -> tuple:
+    """Glyph advances at one size (the renderer's own measurement), cached:
+    the solver re-wraps the same text at the same size for many widths."""
+    from renderer.converter.wrap import char_widths
+
+    return tuple(char_widths(_font_manager(), family, weight, style, size, content))
+
+
 @lru_cache(maxsize=200_000)
 def _measure(content: str, family: str, weight: str, style: str, size: float, width: float):
     """Return (n_lines, widest_word_px) when `content` is wrapped to `width`."""
     fm = _font_manager()
     if fm is not None:
-        from renderer.converter.wrap import char_widths, wrap_text
+        from renderer.converter.wrap import wrap_text
 
-        widths = char_widths(fm, family, weight, style, size, content)
+        widths = list(_char_widths(content, family, weight, style, size))
         wrapped = wrap_text(content, widths, width)
     else:  # fallback estimate if the renderer isn't importable
         widths = [size * 0.56] * len(content)
@@ -131,6 +142,14 @@ def _measure(content: str, family: str, weight: str, style: str, size: float, wi
     return wrapped.count("\n") + 1, widest
 
 
+def _fits_box(el: dict, font_size: float, width: float, height: float) -> bool:
+    """Does `el` at this size, wrapped to `width`, stay inside `height`?"""
+    if el.get("rotation") or not el.get("content"):
+        return True
+    need, fits = text_box_height(el, font_size, width)
+    return fits and need <= height * 1.02 + 0.5
+
+
 def text_box_height(el: dict, font_size: float, width: float) -> tuple[float, bool]:
     """Height needed for `el` at `font_size` wrapped to `width`; bool = fits horizontally."""
     weight, style = _style(el)
@@ -140,6 +159,15 @@ def text_box_height(el: dict, font_size: float, width: float) -> tuple[float, bo
     lines, widest = _measure(
         el["content"], el["font_family"], weight, style, round(font_size, 2), round(width * 0.92, 1)
     )
+    if lines > 1:
+        # the renderer wraps with these same glyph widths at the exact output
+        # size (rounded down to 2 decimals): measured that way with a 3% margin,
+        # a line that only wrapped because of the 8% safety margin doesn't
+        # reserve an empty extra line
+        l2, w2 = _measure(el["content"], el["font_family"], weight, style,
+                          math.floor(font_size * 100 + 1e-9) / 100, round(width * 0.97, 1))
+        if l2 < lines and w2 <= width * 0.97:
+            lines = l2
     lh = el.get("line_height", DEFAULT_LINE_HEIGHT)
     return lines * font_size * lh + font_size * 0.3, widest <= width * 0.92 + 0.5
 
@@ -230,6 +258,36 @@ class Block:
     def __init__(self, elements: list[dict]):
         self.elements = elements
         self.box = _union([_rot_bbox(e) for e in elements])
+        self._ink = {}
+
+    def ink_x(self, k: float = 1.0) -> tuple[float, float]:
+        """Horizontal extent of what is actually drawn (visible image pixels,
+        text ink), in source px, for the block drawn at scale k (tiny type
+        doesn't shrink linearly, so text is measured at its real size).
+        Transparent padding is left out."""
+        key = round(k, 3)
+        if key not in self._ink:
+            spans = []
+            for e in self.elements:
+                if e["type"] == "image" and not e.get("rotation"):
+                    vb = _visible_box(e)
+                    spans.append((vb[0], vb[2]))
+                elif e["type"] == "text" and not e.get("rotation"):
+                    try:
+                        sc = dict(e, font_size=e["font_size"] * key, width=e["width"] * key)
+                        tw = min(_content_width(sc) / key, e["width"])
+                    except Exception:
+                        tw = e["width"]
+                    a = e.get("text_align", "left")
+                    x0 = e["x"] if a == "left" else e["x"] + e["width"] - tw if a == "right" \
+                        else e["x"] + (e["width"] - tw) / 2
+                    pad = 0.04 * tw  # small type doesn't scale perfectly linearly
+                    spans.append((max(e["x"], x0 - pad), min(e["x"] + e["width"], x0 + tw + pad)))
+                else:
+                    b = _rot_bbox(e)
+                    spans.append((b[0], b[2]))
+            self._ink[key] = (min(a for a, _ in spans), max(b for _, b in spans))
+        return self._ink[key]
 
     @property
     def w(self):
@@ -349,6 +407,9 @@ class Ctx:
         self.canvas_ratio = W / H  # the full target's shape (bodies under a masthead keep it)
         self.banner = W / H >= 3 and H <= 250  # short, wide ad banners
         self.fine_ids: set = set()  # fine print (legal lines), set in resize()
+        # short banners can't fit every line legibly: the headline and the call
+        # to action carry the ad, so they take size first (set in resize())
+        self.priority_ids: set = set()
 
     def font_floor(self, f: float) -> float:
         """Minimum rendered size for a source font of size f. Grows with f
@@ -386,6 +447,8 @@ def _bscale(b: "Block", s: float, ctx: "Ctx") -> float:
         # Still strictly increasing in f -> hierarchy order is preserved.
         fmin = min(fonts)
         cap = TYPE_K * s * (ctx.f_ref / fmin) ** (1 - TYPE_GAMMA)
+        if any(e["id"] in ctx.priority_ids for e in b.elements):
+            cap *= PRIORITY_BOOST
     else:
         cap = s * 3.5
     return max(s, min(need, cap, fit_cap * 0.98))
@@ -433,6 +496,38 @@ def _is_peer_row(row) -> bool:
     return min(ws) > 0 and min(hs) > 0 and max(ws) <= 1.6 * min(ws) and max(hs) <= 1.35 * min(hs)
 
 
+def _is_ink_row(row) -> bool:
+    """Rows of fixed art pack by what is drawn: a peer row (product shots +
+    labels, badges) or a lone image (logo, product shot)."""
+    if any(b.flexible_text for b in row):
+        return False
+    if len(row) == 1:
+        return any(e["type"] == "image" for e in row[0].elements)
+    return _is_peer_row(row)
+
+
+def _ink_sizes(row, sizes, ctx, edges=(True, True)):
+    """Slot widths for an ink row: each item's drawn width, so transparent
+    padding doesn't eat the layout (padding may overlap neighbours, unseen).
+    The outer items keep just enough padding that their boxes stay inside the
+    page margin, on the sides where the column meets the canvas edge
+    (`edges` = left, right). Returns (sizes, left pads, source gap between drawn items)."""
+    out, pads, src_gaps = [], [], []
+    for i, (b, (w, h)) in enumerate(zip(row, sizes)):
+        k = w / max(b.w, 1e-6)
+        i0, i1 = b.ink_x(k)
+        pl = max(0.0, (i0 - b.box[0]) * k - ctx.margin) if i == 0 and edges[0] else 0.0
+        pr = max(0.0, (b.box[2] - i1) * k - ctx.margin) if i == len(row) - 1 and edges[1] else 0.0
+        sw = (i1 - i0) * k + pl + pr
+        if sw >= w:
+            sw, pl = w, (i0 - b.box[0]) * k
+        out.append((sw, h))
+        pads.append(pl)
+        if i:
+            src_gaps.append((i0 - row[i - 1].ink_x(k)[1]) * k)
+    return out, pads, (sorted(src_gaps)[len(src_gaps) // 2] if src_gaps else 0.0)
+
+
 def _is_fine_row(row, ctx) -> bool:
     return len(row) == 1 and row[0].flexible_text and row[0].elements[0]["id"] in ctx.fine_ids
 
@@ -451,7 +546,7 @@ def _col_gaps(col, row_ms, gap: float, ctx) -> list[float]:
     return gaps
 
 
-def _row_metrics(row: list[Block], s: float, col_w: float, ctx: Ctx):
+def _row_metrics(row: list[Block], s: float, col_w: float, ctx: Ctx, edges=(True, True)):
     """Return (row_width, row_height, item_sizes, meta) or None if it can't fit
     col_w. meta: gap between items, "mult" (extra shrink for peer rows),
     "stacked" (items placed vertically)."""
@@ -482,9 +577,16 @@ def _row_metrics(row: list[Block], s: float, col_w: float, ctx: Ctx):
     btn = n > 1 and _has_shape(row)
     hmin = min(h for _, h in sizes)
     rgap = max(gap, BUTTON_GAP * hmin) if btn else gap
+    ink = _is_ink_row(row)
+    if ink:
+        sizes, pads, sgap = _ink_sizes(row, sizes, ctx, edges)
+        # like items keep their source spacing while it fits; the spacing gives
+        # way (down to the base gap) before the items themselves shrink
+        if n > 1:
+            rgap = max(rgap, min(sgap, (col_w - sum(w for w, _ in sizes)) / (n - 1)))
     rw = sum(w for w, _ in sizes) + rgap * (n - 1)
     if rw <= col_w + 0.5:
-        return rw, max(h for _, h in sizes), sizes, {"gap": rgap}
+        return rw, max(h for _, h in sizes), sizes, {"gap": rgap, "pads": pads if ink else None}
     # Too wide side by side. Like items (options, badges) keep their side-by-side
     # arrangement, shrinking to fit, as long as their text stays readable;
     # otherwise they wrap into the widest grid that is. Other rows just stack.
@@ -507,7 +609,8 @@ def _row_metrics(row: list[Block], s: float, col_w: float, ctx: Ctx):
         lines = [sz[i:i + c] for i in range(0, n, c)]
         gw = max(sum(w for w, _ in ln) + g * (len(ln) - 1) for ln in lines)
         gh = sum(max(h for _, h in ln) for ln in lines) + g * (len(lines) - 1)
-        return gw, gh, sz, {"gap": g, "mult": f, "grid": c}
+        return gw, gh, sz, {"gap": g, "mult": f, "grid": c,
+                            "pads": [p * f for p in pads] if ink else None}
     return None
 
 
@@ -521,7 +624,7 @@ def _row_legible(row, s: float, mult: float, ctx) -> bool:
     return True
 
 
-def _preferred_col_width(col: list[list[Block]], s: float, ctx: Ctx) -> tuple[float, float]:
+def _preferred_col_width(col: list[list[Block]], s: float, ctx: Ctx, edges=(True, True)) -> tuple[float, float]:
     """(min_width, preferred_width) for a column at scale s."""
     gap = ctx.gap_src * s
     mins, prefs = [], []
@@ -535,8 +638,12 @@ def _preferred_col_width(col: list[list[Block]], s: float, ctx: Ctx) -> tuple[fl
             prefs.append(el["width"] * bs)
         else:
             ws = [(b.elements[0]["width"] if b.flexible_text else b.w) * _bscale(b, s, ctx) for b in row]
+            g = gap
+            if _is_ink_row(row):
+                sz, _, sgap = _ink_sizes(row, [(w, 0.0) for w in ws], ctx, edges)
+                ws, g = [w for w, _ in sz], max(gap, sgap)
             mins.append(max(ws))
-            prefs.append(sum(ws) + gap * (len(row) - 1))
+            prefs.append(sum(ws) + g * (len(row) - 1))
     return max(mins), max(max(prefs), max(mins))
 
 
@@ -550,7 +657,8 @@ def _try_layout(columns: list[list[list[Block]]], s: float, ctx: Ctx):
     usable = AW - col_gap * (k - 1)
     if usable <= 0:
         return None
-    mp = [_preferred_col_width(c, s, ctx) for c in columns]
+    edges = [(i == 0, i == k - 1) for i in range(k)]  # which columns meet the canvas sides
+    mp = [_preferred_col_width(c, s, ctx, e) for c, e in zip(columns, edges)]
     mins = [m for m, _ in mp]
     prefs = [p for _, p in mp]
     if sum(mins) > usable + 0.5:
@@ -572,18 +680,48 @@ def _try_layout(columns: list[list[list[Block]]], s: float, ctx: Ctx):
         short = sum(prefs) - usable
         widths = [p - (p - m) * short / flex for p, m in zip(prefs, mins)]
 
-    plan_cols = []
-    for col, cw in zip(columns, widths):
+    def fit(col, cw, e):
         rows = []
         for row in col:
-            m = _row_metrics(row, s, cw, ctx)
+            m = _row_metrics(row, s, cw, ctx, e)
             if m is None:
                 return None
             rows.append(m)
         total = sum(m[1] for m in rows) + sum(_col_gaps(col, rows, gap, ctx))
-        if total > AH + 0.5:
+        return (cw, rows, total) if total <= AH + 0.5 else None
+
+    plan_cols = [fit(col, cw, e) for col, cw, e in zip(columns, widths, edges)]
+    # (skipped on very crowded designs, where it would cost too much time)
+    if None in plan_cols and k > 1 and sum(len(r) for c in columns for r in c) <= 20:
+        # width negotiation: a column too tall at its share (long copy) takes
+        # width from columns that don't need it. Each column gets the narrowest
+        # width at which it fits the height; the spare is shared out as before.
+        need = []
+        for col, m, e, pc, cw in zip(columns, mins, edges, plan_cols, widths):
+            lo_w, hi_w = m, usable - (sum(mins) - m)
+            if pc is not None and not any(b.flexible_text for row in col for b in row):
+                need.append(cw)  # fixed art that fits: keep its share
+                continue
+            if fit(col, lo_w, e) is not None:
+                need.append(lo_w)
+                continue
+            if hi_w <= lo_w or fit(col, hi_w, e) is None:
+                return None
+            for _ in range(5):
+                mid = (lo_w + hi_w) / 2
+                if fit(col, mid, e) is not None:
+                    hi_w = mid
+                else:
+                    lo_w = mid
+            need.append(hi_w)
+        spare = usable - sum(need)
+        if spare < -0.5:
             return None
-        plan_cols.append((cw, rows, total))
+        tot = sum(prefs) or 1.0
+        widths = [n + max(0.0, spare) * p / tot for n, p in zip(need, prefs)]
+        plan_cols = [fit(col, cw, e) for col, cw, e in zip(columns, widths, edges)]
+    if None in plan_cols:
+        return None
     return {"s": s, "widths": widths, "cols": plan_cols, "col_gap": col_gap}
 
 
@@ -632,7 +770,7 @@ def _solve(rows, ctx: Ctx, content=None, want_all=False):
             if _try_layout(cols, hi, ctx):
                 lo = hi
             else:
-                for _ in range(22):
+                for _ in range(14):
                     mid = (lo + hi) / 2
                     if _try_layout(cols, mid, ctx):
                         lo = mid
@@ -723,7 +861,7 @@ def _quality(cols, plan, ctx: Ctx, content, s_best: float = 1.0) -> float:
 
 
 def _place_block(b: Block, x: float, y: float, w: float, h: float, s: float, out: dict, ctx=None,
-                 mult: float = 1.0):
+                 mult: float = 1.0, pad: float | None = None):
     if ctx is not None:
         s = _bscale(b, s, ctx)
     s *= mult
@@ -734,6 +872,8 @@ def _place_block(b: Block, x: float, y: float, w: float, h: float, s: float, out
     bx0, by0 = b.box[0], b.box[1]
     # center the scaled block inside the slot
     ox = x + (w - b.w * s) / 2
+    if pad is not None:  # slot sized to what is drawn: place the ink, not the box
+        ox = x + pad - (b.ink_x(s / mult if mult else s)[0] - bx0) * s
     oy = y + (h - b.h * s) / 2
     for src in b.elements:
         el = out[src["id"]]
@@ -781,6 +921,7 @@ def _apply(cols, plan, ctx: Ctx, out: dict):
             for i in range(1, n):
                 prev_bottom = anchored[i - 1] + row_ms[i - 1][1] + gaps[i - 1]
                 anchored[i] = max(anchored[i], prev_bottom)
+            _compress_body(col, row_ms, gaps, anchored, s, ctx)
             if n and anchored[-1] + row_ms[-1][1] <= ctx.H - ctx.margin + 0.5:
                 row_ys = anchored
         for row, (rw, rh, sizes, meta), y in zip(col, row_ms, row_ys):
@@ -796,8 +937,10 @@ def _apply(cols, plan, ctx: Ctx, out: dict):
                         cur = x
                     elif side == "right":
                         cur = x + cw - lw
-                    for b, (w, h) in line:
-                        _place_block(b, cur, yy + (lh - h) / 2, w, h, s, out, ctx, mult)
+                    for j, (b, (w, h)) in enumerate(line):
+                        pads = meta.get("pads")
+                        _place_block(b, cur, yy + (lh - h) / 2, w, h, s, out, ctx, mult,
+                                     pads[i + j] if pads else None)
                         _mark_col(b, out, x, cw)
                         cur += w + rgap
                     yy += lh + rgap
@@ -826,10 +969,31 @@ def _apply(cols, plan, ctx: Ctx, out: dict):
                 for w, _ in sizes:
                     xs.append(cur)
                     cur += w + rgap
-            for b, (w, h), bx in zip(row, sizes, xs):
-                _place_block(b, bx, y + (rh - h) / 2, w, h, s, out, ctx, mult)
+            pads = meta.get("pads") or [None] * len(row)
+            for b, (w, h), bx, pd in zip(row, sizes, xs, pads):
+                _place_block(b, bx, y + (rh - h) / 2, w, h, s, out, ctx, mult, pd)
                 _mark_col(b, out, x, cw)
         x += cw + plan["col_gap"] + pad_x
+
+
+def _compress_body(col, row_ms, gaps, ys, s, ctx):
+    """Extra canvas height goes around the body, not between its rows: a gap
+    between two body rows grows at most to its source size x scale x 1.25.
+    The logo (top) and the fine print (bottom) keep their anchors; the
+    tightened body stays centered where it was."""
+    body = [i for i, row in enumerate(col) if not _is_fine_row(row, ctx)
+            and not any(e["id"] == ctx.logo_id for b in row for e in b.elements)]
+    if len(body) < 2 or body != list(range(body[0], body[-1] + 1)):
+        return
+    new = {body[0]: ys[body[0]]}
+    for a, b in zip(body, body[1:]):
+        sg = max(0.0, min(bl.box[1] for bl in col[b]) - max(bl.box[3] for bl in col[a]))
+        cur = ys[b] - ys[a] - row_ms[a][1]
+        new[b] = new[a] + row_ms[a][1] + min(cur, max(gaps[a], sg * s * 1.25))
+    last = body[-1]
+    shift = ((ys[body[0]] + ys[last]) - (new[body[0]] + new[last])) / 2
+    for i in body:
+        ys[i] = new[i] + shift
 
 
 def _has_hero(row, ctx) -> bool:
@@ -1013,7 +1177,7 @@ def _place_soft_decor(soft, out, content, ctx: Ctx, logo):
         elif e["type"] in ("text", "shape"):
             prot.append((_rot_bbox(el), 6.0))
         else:
-            prot.append((_visible_box(el), 0.3))  # layering over imagery is fine
+            prot.append((_visible_box(el), 2.0))  # over a product it reads as a shadow
     placed, centers = [], []
     for src in sorted(soft, key=lambda e: -e["width"] * e["height"]):
         el = out[src["id"]]
@@ -1022,24 +1186,29 @@ def _place_soft_decor(soft, out, content, ctx: Ctx, logo):
         w, h = max(w * cap, 1.0), max(h * cap, 1.0)
         u = min(max((src["x"] + src["width"] / 2) / ctx.src_w, 0.0), 1.0)
         v = min(max((src["y"] + src["height"] / 2) / ctx.src_h, 0.0), 1.0)
-        best = None
+        # every size from full down: the decor stays near its source corner and
+        # would rather shrink a little than drift away; it never touches the logo
+        best, fallback, sc = None, None, 1.0
         for _ in range(8):
-            best = None
+            cw_, ch_ = w * sc, h * sc
             for i in range(11):
                 for j in range(11):
-                    x, y = max(0.0, W - w) * i / 10, max(0.0, H - h) * j / 10
-                    box, a = (x, y, x + w, y + h), w * h
+                    x, y = max(0.0, W - cw_) * i / 10, max(0.0, H - ch_) * j / 10
+                    box, a = (x, y, x + cw_, y + ch_), cw_ * ch_
                     ov = sum(wt * _inter(box, pb) for pb, wt in prot) / a
                     ov += sum(2.0 * _inter(box, pb) for pb in placed) / a
-                    cx, cy = (x + w / 2) / W, (y + h / 2) / H
+                    cx, cy = (x + cw_ / 2) / W, (y + ch_ / 2) / H
                     sep = min((math.hypot(cx - px, cy - py) for px, py in centers), default=1.0)
-                    cost = ov + 0.8 * math.hypot(cx - u, cy - v) - 0.4 * sep
-                    hits_logo = any(wt >= 1000 and _inter(box, pb) > 0 for pb, wt in prot)
-                    if best is None or cost < best[0]:
-                        best = (cost, x, y, hits_logo)
-            if not best[3]:
-                break
-            w, h = w * 0.8, h * 0.8
+                    cost = ov + 1.5 * math.hypot(cx - u, cy - v) - 0.4 * sep + 0.6 * (1 - sc)
+                    cand = (cost, x, y, cw_, ch_)
+                    if any(wt >= 1000 and _inter(box, pb) > 0 for pb, wt in prot):
+                        if fallback is None or cost < fallback[0]:
+                            fallback = cand
+                    elif best is None or cost < best[0]:
+                        best = cand
+            sc *= 0.8
+        best = best or fallback
+        w, h = best[3], best[4]
         el.update(x=best[1], y=best[2], width=w, height=h)
         placed.append((best[1], best[2], best[1] + w, best[2] + h))
         centers.append(((best[1] + w / 2) / W, (best[2] + h / 2) / H))
@@ -1105,7 +1274,7 @@ def _bg_focus(asset_id: str, fit: str, W: int, H: int):
 
 
 def _center_on_focus(sim, content, ctx: Ctx, logo, focus):
-    """Slide the body vertically so its main element (hero, else headline)
+    """Slide the body vertically so its main element (hero, else the whole body)
     sits on the background's light, without crossing the logo, the fine
     print or the margins."""
     if focus is None:
@@ -1115,14 +1284,10 @@ def _center_on_focus(sim, content, ctx: Ctx, logo, focus):
     if not body:
         return
     prim = ctx.hero_id if ctx.hero_id and ctx.hero_id not in fixed and ctx.hero_id in sim else None
-    if prim is None:
-        texts = [e for e in body if e["type"] == "text"]
-        if not texts:
-            return
-        prim = max(texts, key=lambda e: e["font_size"])["id"]
-    pb = _rot_bbox(sim[prim])
-    dy = focus[1] - (pb[1] + pb[3]) / 2
     bb = _union([_rot_bbox(sim[e["id"]]) for e in body])
+    # the hero sits on the light; without one, the body as a whole does
+    pb = _rot_bbox(sim[prim]) if prim is not None else bb
+    dy = focus[1] - (pb[1] + pb[3]) / 2
     lo, hi = ctx.margin - bb[1], ctx.H - ctx.margin - bb[3]
     for oid in fixed:
         if oid not in sim:
@@ -1138,6 +1303,12 @@ def _center_on_focus(sim, content, ctx: Ctx, logo, focus):
             return
     if lo > hi:
         return
+    if prim is None:
+        # a small text cluster sits right on the light; a tall body (no single
+        # hero) leans toward it but stays balanced in its free band
+        band = (hi - lo) + (bb[3] - bb[1])
+        t = 0.5 * min(1.0, max(0.0, ((bb[3] - bb[1]) / max(band, 1e-6) - 0.3) / 0.3))
+        dy = (1 - t) * dy + t * (lo + hi) / 2
     dy = min(max(dy, lo), hi)
     if abs(dy) >= 1:
         for e in body:
@@ -1260,6 +1431,7 @@ def resize(source: dict[str, Any], target_canvas: dict[str, Any]) -> dict[str, A
 
 
 def _safe_fallback(source: dict[str, Any], target_canvas: dict[str, Any]) -> dict[str, Any]:
+    """Uniform fit-inside scale of the source, centered; backgrounds fill."""
     W, H = target_canvas["width"], target_canvas["height"]
     src_w = max(source["canvas"]["width"], 1)
     src_h = max(source["canvas"]["height"], 1)
@@ -1290,6 +1462,15 @@ def _resize(source: dict[str, Any], target_canvas: dict[str, Any]) -> dict[str, 
     fonts = [e["font_size"] for e in source["elements"] if e["type"] == "text"]
     if fonts:
         ctx.f_ref = min(fonts)
+
+    # Same shape: the designer's arrangement already fits, so don't rearrange
+    # it for no reason; scale it faithfully as long as every text stays readable
+    k = min(W / src_w, H / src_h)
+    if abs(math.log((W / H) / (src_w / src_h))) < math.log(1.08) and all(
+            e["font_size"] * k >= 0.85 * ctx.font_floor(e["font_size"])
+            and _fits_box(e, e["font_size"] * k, e["width"] * k, e["height"] * k)
+            for e in source["elements"] if e["type"] == "text"):
+        return _safe_fallback(source, target_canvas)
 
     out = {el["id"]: copy.deepcopy(el) for el in source["elements"]}
     by_class: dict[str, list[dict]] = {"background": [], "decor": [], "content": []}
@@ -1345,6 +1526,12 @@ def _resize(source: dict[str, Any], target_canvas: dict[str, Any]) -> dict[str, 
         logo, cta = _find_roles(blocks, content, src_w, src_h)
         if logo is not None:
             ctx.logo_id = logo.elements[0]["id"]
+        if ctx.banner:
+            texts_ = [e for e in content if e["type"] == "text" and not e.get("group_id")]
+            if texts_:
+                ctx.priority_ids.add(max(texts_, key=lambda e: e["font_size"])["id"])
+            if cta is not None:
+                ctx.priority_ids |= {e["id"] for e in cta.elements}
         body_blocks = [b for b in blocks if b is not logo]
         body_rows = _build_rows(body_blocks) if body_blocks else []
         for row in body_rows:
@@ -1376,6 +1563,7 @@ def _resize(source: dict[str, Any], target_canvas: dict[str, Any]) -> dict[str, 
                 bctx.side_align, bctx.logo_left = ctx.side_align, ctx.logo_left
                 bctx.canvas_ratio = ctx.canvas_ratio
                 bctx.fine_ids, bctx.banner = ctx.fine_ids, ctx.banner
+                bctx.priority_ids = ctx.priority_ids
                 _set_row_caps(body_rows, bctx)
                 ranked = _solve(body_rows, bctx, body_content, want_all=True) or []
                 for q, cols, plan in ranked[:6]:
@@ -1429,8 +1617,12 @@ def _resize(source: dict[str, Any], target_canvas: dict[str, Any]) -> dict[str, 
     for el in source["elements"]:  # preserve input order
         o = out[el["id"]]
         _clamp(o, W, H)
-        for f in ("x", "y", "width", "height", "font_size"):
+        for f in ("x", "y", "width", "height"):
             if f in o:
                 o[f] = round(float(o[f]), 2)
+        if "font_size" in o:
+            # round down: the renderer draws int(font_size), and rounding
+            # 12.99998 up to 13.0 would draw a size the layout never measured
+            o["font_size"] = math.floor(float(o["font_size"]) * 100 + 1e-9) / 100
         elements.append(o)
     return {"canvas": {"width": W, "height": H}, "elements": elements}
