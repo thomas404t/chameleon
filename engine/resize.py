@@ -1275,8 +1275,9 @@ def _avoid_content(decor, content, out, ctx: Ctx):
             continue
         el = out[src["id"]]
         x0, y0, w0, h0 = el["x"], el["y"], el["width"], el["height"]
-        # the biggest size that sits clear of all content, nearest its own
-        # spot; a 9 x 9 grid of positions over the canvas at each size
+        # the biggest size that sits clear of all content, tucked into a
+        # corner (a placeholder in the middle of the copy reads as broken);
+        # a 9 x 9 grid of positions over the canvas at each size
         best = None
         for sc in (1.0, 0.8, 0.64, 0.5, 0.4, 0.3, 0.2):
             w, h = w0 * sc, h0 * sc
@@ -1287,7 +1288,9 @@ def _avoid_content(decor, content, out, ctx: Ctx):
             for (x, y) in cands:
                 el.update(x=x, y=y, width=w, height=h)
                 ov = overlap(el)
-                key = (round(ov / max(w * h, 1e-6), 2), 1 - sc, math.hypot(x - x0, y - y0))
+                cx, cy = (x + w / 2) / ctx.W, (y + h / 2) / ctx.H
+                corner = math.hypot(min(cx, 1 - cx), min(cy, 1 - cy))
+                key = (round(ov / max(w * h, 1e-6), 2), 1 - sc, round(corner, 3), math.hypot(x - x0, y - y0))
                 if best is None or key < best[0]:
                     best = (key, x, y, w, h)
             if best[0][0] == 0:
