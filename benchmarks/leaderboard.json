@@ -1,9 +1,9 @@
 {
- "updated": "2026-10-30T07:26:31",
+ "updated": "2026-10-30T07:28:31",
  "champion": {
-  "gen": 2,
-  "name": "gen2-B1",
-  "fitness": 89.057,
+  "gen": 3,
+  "name": "gen3-B3",
+  "fitness": 89.235,
   "genome": {
    "margin": 0.0398,
    "gap": 0.0197,
@@ -23,7 +23,7 @@
    "w_leg": 0.22,
    "w_size": 0.18,
    "w_hero": 0.18,
-   "w_order": 0.12,
+   "w_order": 0.1309,
    "w_struct": 0.12,
    "w_bal": 0.09,
    "w_fill": 0.09,
@@ -34,53 +34,53 @@
    "optical_lift": 0.0,
    "hero_mass": 0.0,
    "split_bias": -0.8,
-   "zone_top_align": 0.2136,
-   "zone_header": 0.0,
+   "zone_top_align": 0.2183,
+   "zone_header": 1.0,
    "headline_lead": 1.0,
    "relax_iters": 0,
    "relax_clear": 0.02,
    "relax_spring": 0.0
   },
-  "engine": "/Users/thomasi/Desktop/Github/chameleon/benchmarks/runs/gen-2/B1/resize.py",
+  "engine": "/Users/thomasi/Desktop/Github/chameleon/benchmarks/runs/gen-3/B3/resize.py",
   "fixtures": {
-   "mean_total": 89.057,
-   "hierarchy": 23.31,
-   "optical": 18.681,
-   "space": 23.171,
-   "readability": 23.895,
+   "mean_total": 89.235,
+   "hierarchy": 23.346,
+   "optical": 18.762,
+   "space": 23.214,
+   "readability": 23.913,
    "overflow": 0,
    "collisions": 0,
    "crashes": 0,
    "hard_violations": 0,
    "critical_tasks": 0,
-   "max_secs": 2.44,
+   "max_secs": 2.49,
    "by_target": {
-    "16x9_landscape": 88.339,
-    "1x1_square": 89.71,
+    "16x9_landscape": 88.423,
+    "1x1_square": 90.638,
     "3x4_poster": 92.352,
-    "4x1_header": 88.821,
+    "4x1_header": 88.849,
     "4x5_portrait": 91.917,
-    "8x1_leaderboard": 79.474,
+    "8x1_leaderboard": 79.683,
     "9x16_story": 92.783
    },
    "by_tier": {
-    "advanced": 88.439,
-    "core": 88.896,
-    "warmup": 89.835
+    "advanced": 88.838,
+    "core": 89.032,
+    "warmup": 89.836
    }
   },
   "regression": {
-   "mean_total": 86.784,
-   "hierarchy": 22.614,
-   "optical": 18.075,
-   "space": 22.866,
-   "readability": 23.229,
+   "mean_total": 86.92,
+   "hierarchy": 22.644,
+   "optical": 18.191,
+   "space": 22.867,
+   "readability": 23.218,
    "overflow": 1,
    "collisions": 0,
    "crashes": 0,
    "hard_violations": 0,
    "critical_tasks": 1,
-   "max_secs": 3.35
+   "max_secs": 4.81
   },
   "strategy": "grid-zoning"
  },
@@ -182,17 +182,175 @@
   },
   {
    "gen": 2,
-   "branch": null,
-   "tag": null,
+   "branch": "gen-2-grid-zoning",
+   "tag": "gen-2-score-89.06",
    "winner": "gen2-B1",
    "fitness": 89.057,
    "delta": 0.209,
    "seed_fitness": 88.848,
    "regression": 86.784,
    "strength": 0.30250000000000005
+  },
+  {
+   "gen": 3,
+   "branch": null,
+   "tag": null,
+   "winner": "gen3-B3",
+   "fitness": 89.235,
+   "delta": 0.178,
+   "seed_fitness": 89.057,
+   "regression": 86.92,
+   "strength": 0.3327500000000001
   }
  ],
  "ranking": [
+  {
+   "gen": 3,
+   "name": "gen3-B3",
+   "family": "B",
+   "strategy": "grid-zoning",
+   "changed": {
+    "zone_top_align": [
+     0.2136,
+     0.2183
+    ],
+    "zone_header": [
+     0.0,
+     1.0
+    ],
+    "w_order": [
+     0.12,
+     0.1309
+    ]
+   },
+   "fitness": 89.235
+  },
+  {
+   "gen": 3,
+   "name": "gen3-A3",
+   "family": "A",
+   "strategy": "hero-anchor",
+   "changed": {
+    "w_hero": [
+     0.18,
+     0.1177
+    ],
+    "logo_area": [
+     0.045,
+     0.0307
+    ],
+    "hero_floor": [
+     0.55,
+     0.6027
+    ]
+   },
+   "fitness": 89.221
+  },
+  {
+   "gen": 3,
+   "name": "gen3-D2",
+   "family": "D",
+   "strategy": "elastic-repulsion",
+   "changed": {
+    "relax_clear": [
+     0.02,
+     0.0077
+    ],
+    "relax_iters": [
+     0,
+     10
+    ],
+    "gap": [
+     0.0197,
+     0.0227
+    ],
+    "headline_lead": [
+     1.0,
+     1.589
+    ]
+   },
+   "fitness": 89.159
+  },
+  {
+   "gen": 3,
+   "name": "gen3-A1",
+   "family": "A",
+   "strategy": "hero-anchor",
+   "changed": {
+    "image_floor": [
+     0.3,
+     0.3701
+    ],
+    "hero_mass": [
+     0.0,
+     2.7285
+    ]
+   },
+   "fitness": 89.069
+  },
+  {
+   "gen": 3,
+   "name": "gen3-B1",
+   "family": "B",
+   "strategy": "grid-zoning",
+   "changed": {
+    "w_order": [
+     0.12,
+     0.0562
+    ],
+    "w_struct": [
+     0.12,
+     0.1174
+    ],
+    "brand_weight": [
+     0.3,
+     0.34
+    ]
+   },
+   "fitness": 89.064
+  },
+  {
+   "gen": 3,
+   "name": "gen3-B2",
+   "family": "B",
+   "strategy": "grid-zoning",
+   "changed": {
+    "zone_header": [
+     0.0,
+     1.0
+    ],
+    "zone_top_align": [
+     0.2136,
+     0.0
+    ],
+    "w_order": [
+     0.12,
+     0.0694
+    ]
+   },
+   "fitness": 89.062
+  },
+  {
+   "gen": 3,
+   "name": "gen3-D1",
+   "family": "D",
+   "strategy": "elastic-repulsion",
+   "changed": {
+    "relax_spring": [
+     0.0,
+     0.3402
+    ],
+    "button_gap": [
+     0.3,
+     0.3881
+    ],
+    "gap": [
+     0.0197,
+     0.0292
+    ]
+   },
+   "fitness": 89.058
+  },
   {
    "gen": 2,
    "name": "gen2-B1",
@@ -217,6 +375,119 @@
     ]
    },
    "fitness": 89.057
+  },
+  {
+   "gen": 3,
+   "name": "gen3-C1",
+   "family": "C",
+   "strategy": "type-flow",
+   "changed": {
+    "priority_boost": [
+     1.6,
+     1.2476
+    ],
+    "type_k": [
+     6.0,
+     5.141
+    ]
+   },
+   "fitness": 89.034
+  },
+  {
+   "gen": 3,
+   "name": "gen3-C3",
+   "family": "C",
+   "strategy": "type-flow",
+   "changed": {
+    "headline_lead": [
+     1.0,
+     1.1946
+    ],
+    "min_font": [
+     11.0,
+     13.5948
+    ]
+   },
+   "fitness": 88.962
+  },
+  {
+   "gen": 3,
+   "name": "gen3-A2",
+   "family": "A",
+   "strategy": "hero-anchor",
+   "changed": {
+    "hero_mass": [
+     0.0,
+     1.8556
+    ],
+    "logo_area": [
+     0.045,
+     0.0527
+    ],
+    "w_bal": [
+     0.09,
+     0.0958
+    ],
+    "w_hero": [
+     0.18,
+     0.2471
+    ],
+    "w_size": [
+     0.18,
+     0.159
+    ]
+   },
+   "fitness": 88.948
+  },
+  {
+   "gen": 3,
+   "name": "gen3-D3",
+   "family": "D",
+   "strategy": "elastic-repulsion",
+   "changed": {
+    "relax_clear": [
+     0.02,
+     0.0221
+    ],
+    "gap": [
+     0.0197,
+     0.012
+    ],
+    "relax_iters": [
+     0,
+     4
+    ]
+   },
+   "fitness": 88.885
+  },
+  {
+   "gen": 3,
+   "name": "gen3-C2",
+   "family": "C",
+   "strategy": "type-flow",
+   "changed": {
+    "min_font": [
+     11.0,
+     10.4903
+    ],
+    "w_leg": [
+     0.22,
+     0.2484
+    ],
+    "w_size": [
+     0.18,
+     0.1507
+    ],
+    "type_k": [
+     6.0,
+     3.0
+    ],
+    "logo_area": [
+     0.045,
+     0.0531
+    ]
+   },
+   "fitness": 88.864
   },
   {
    "gen": 2,
