@@ -57,19 +57,68 @@ STYLE = {
     "text_align": "follow_layout",  # "follow_layout": alignment matches placement | "keep_source"
 }
 
+# Layout heuristics as one tunable genome. The overnight tournament
+# (evolution/) mutates the block between the markers; these values are the
+# tournament's best so far. Strategy genes default to "off" (0) so each one
+# only changes a layout when it has earned its place.
+# >>> GENOME
+GENOME = {
+    # spacing
+    "margin": 0.045,          # page margin, share of the canvas short side
+    "gap": 0.025,             # base gap between rows, share of the source short side
+    "pad_y": 2.0,             # spare height spread between rows, at most this x base gap
+    "body_gap_cap": 1.25,     # a body gap grows at most to source gap x scale x this
+    "col_gap": 0.02,          # minimum gap between columns, share of canvas width
+    "button_gap": 0.3,        # spacing between neighbouring buttons / badges, x their height
+    "text_gap": 1.0,          # gap between two stacked text rows, x base gap (cluster cohesion)
+    # type
+    "type_gamma": 0.6,        # type-scale compression exponent (see _bscale)
+    "type_k": 6.0,            # type boost ceiling
+    "priority_boost": 1.6,    # short banners: extra type scale for headline + CTA
+    "min_font": 11.0,         # legibility floor cap (px)
+    "min_font_frac": 0.09,    # legibility floor, share of the canvas short side
+    # images
+    "hero_floor": 0.55,       # hero short side floor, share of canvas short side
+    "image_floor": 0.3,       # other images' short side floor
+    "logo_area": 0.045,       # banner logo footprint, share of canvas area
+    # candidate objective (_quality) and brand rules
+    "w_leg": 0.22, "w_size": 0.18, "w_hero": 0.18, "w_order": 0.12,
+    "w_struct": 0.12, "w_bal": 0.09, "w_fill": 0.09,
+    "col_penalty": 0.94,      # stage-1 ranking: per extra column
+    "brand_weight": 0.3,
+    "symmetry": 0.6,
+    # A) hero-centric optical anchoring
+    "focus_blend": 0.5,       # tall bodies without a hero lean this far toward their band center
+    "optical_lift": 0.0,      # no background glow: lift the body's visual mass this share of H above center
+    "hero_mass": 0.0,         # optical centering weighs the hero this much more than the rest
+    # B) dynamic grid and zoning
+    "split_bias": 0.0,        # wide canvases: extra columns the structure score expects
+    "zone_top_align": 0.0,    # multi-column: 1 = columns share a top line, 0 = each centered
+    "zone_header": 0.0,       # 1 = also try logo + headline as a full-width header over the rest
+    # C) typography and text flow
+    "headline_lead": 1.0,     # headline-to-next-row gap, x the text gap (1 = same)
+    # D) constraint and elastic repulsion
+    "relax_iters": 0,         # post-pass iterations (0 = off)
+    "relax_clear": 0.02,      # minimum clearance between blocks, share of short side
+    "relax_spring": 0.0,      # pull stacked gaps toward their mean (0 = off)
+}
+# <<< GENOME
+
 # Target logo footprint as a share of canvas area (see _logo_scale).
-LOGO_AREA = 0.045
+LOGO_AREA = GENOME["logo_area"]
 # Minimum visible logo height (px), so the mark stays legible on small canvases.
 LOGO_MIN_PX = 22.0
 
 # Type-scale compression (see _bscale): exponent and boost ceiling.
-TYPE_GAMMA = 0.6
-TYPE_K = 6.0
+TYPE_GAMMA = GENOME["type_gamma"]
+TYPE_K = GENOME["type_k"]
 
 # Minimum spacing between neighbouring buttons / badges, as a share of their height.
-BUTTON_GAP = 0.3
+BUTTON_GAP = GENOME["button_gap"]
 # Short banners: extra type scale for the headline and call to action
-PRIORITY_BOOST = 1.6
+PRIORITY_BOOST = GENOME["priority_boost"]
+STYLE["brand_weight"] = GENOME["brand_weight"]
+STYLE["symmetry"] = GENOME["symmetry"]
 
 # --------------------------------------------------------------------------
 # Text measurement (uses the renderer's own wrapping so heights are exact)
@@ -394,10 +443,10 @@ def _build_rows(blocks: list[Block]) -> list[list[Block]]:
 class Ctx:
     def __init__(self, src_w, src_h, W, H):
         self.src_w, self.src_h, self.W, self.H = src_w, src_h, W, H
-        self.margin = max(3.0, 0.045 * min(W, H))
-        self.gap_src = 0.025 * min(src_w, src_h)  # base gap in source px
+        self.margin = max(3.0, GENOME["margin"] * min(W, H))
+        self.gap_src = GENOME["gap"] * min(src_w, src_h)  # base gap in source px
         # legibility floor for text (px). Small canvases get a smaller floor.
-        self.min_font = min(11.0, max(7.0, 0.09 * min(W, H)))
+        self.min_font = min(GENOME["min_font"], max(7.0, GENOME["min_font_frac"] * min(W, H)))
         self.f_ref = 12.0  # set from the design's smallest font in resize()
         self.hero_id = None  # largest content image, set in resize()
         self.center_rows = True
@@ -431,7 +480,7 @@ def _bscale(b: "Block", s: float, ctx: "Ctx") -> float:
         short = min(min(e["width"], e["height"]) for e in imgs)
         if short > 0:
             is_hero = any(e["id"] == ctx.hero_id for e in imgs)
-            floor = (0.55 if is_hero else 0.3) * min(ctx.W, ctx.H)
+            floor = (GENOME["hero_floor"] if is_hero else GENOME["image_floor"]) * min(ctx.W, ctx.H)
             need = max(need, min(floor, short) / short)
         if any(e["id"] == ctx.logo_id for e in imgs):
             need = max(need, _logo_scale(b, ctx))
@@ -463,9 +512,10 @@ def _logo_scale(b: "Block", ctx: "Ctx") -> float:
     vb = _visible_box(b.elements[0])
     vw, vh = max(vb[2] - vb[0], 1e-6), max(vb[3] - vb[1], 1e-6)
     bw, bh = max(b.w, 1e-6), max(b.h, 1e-6)
-    rel = math.sqrt(ctx.W * ctx.H / (ctx.src_w * ctx.src_h))
-    spec = math.sqrt(LOGO_AREA * ctx.W * ctx.H / (vw * vh))
-    shape_change = abs(math.log2((ctx.W / ctx.H) / (ctx.src_w / ctx.src_h)))
+    FW, FH = getattr(ctx, "full", (ctx.W, ctx.H))  # inside a zone: the whole canvas
+    rel = math.sqrt(FW * FH / (ctx.src_w * ctx.src_h))
+    spec = math.sqrt(LOGO_AREA * FW * FH / (vw * vh))
+    shape_change = abs(math.log2((FW / FH) / (ctx.src_w / ctx.src_h)))
     t = min(1.0, max(0.0, shape_change - 1.0))  # 0 up to a 2x ratio change, 1 from 4x
     a = rel ** (1 - t) * spec ** t
     a = max(a, LOGO_MIN_PX / vh)  # small canvases: the mark must stay legible
@@ -528,6 +578,14 @@ def _ink_sizes(row, sizes, ctx, edges=(True, True)):
     return out, pads, (sorted(src_gaps)[len(src_gaps) // 2] if src_gaps else 0.0)
 
 
+def _is_text_row(row) -> bool:
+    return len(row) == 1 and row[0].flexible_text
+
+
+def _first_text_row(col) -> int:
+    return next((i for i, row in enumerate(col) if _is_text_row(row)), -1)
+
+
 def _is_fine_row(row, ctx) -> bool:
     return len(row) == 1 and row[0].flexible_text and row[0].elements[0]["id"] in ctx.fine_ids
 
@@ -538,6 +596,9 @@ def _col_gaps(col, row_ms, gap: float, ctx) -> list[float]:
     gaps = []
     for i in range(1, len(col)):
         g = gap
+        if _is_text_row(col[i - 1]) and _is_text_row(col[i]):
+            # copy reads as one cluster: headline + subhead sit closer (or apart)
+            g = gap * GENOME["text_gap"] * (GENOME["headline_lead"] if i == _first_text_row(col) + 1 else 1.0)
         if _has_shape(col[i - 1]) and _has_shape(col[i]):
             g = max(g, BUTTON_GAP * min(row_ms[i - 1][1], row_ms[i][1]))
         if _is_fine_row(col[i], ctx):
@@ -653,7 +714,7 @@ def _try_layout(columns: list[list[list[Block]]], s: float, ctx: Ctx):
     AH = ctx.H - 2 * ctx.margin
     gap = ctx.gap_src * s
     k = len(columns)
-    col_gap = max(gap * 2, 0.02 * ctx.W)
+    col_gap = max(gap * 2, GENOME["col_gap"] * ctx.W)
     usable = AW - col_gap * (k - 1)
     if usable <= 0:
         return None
@@ -783,7 +844,7 @@ def _solve(rows, ctx: Ctx, content=None, want_all=False):
                 continue
             fills = [c[2] for c in plan["cols"]]
             balance = min(fills) / max(fills) if max(fills) > 0 else 1
-            fast = lo * (0.94 ** (k - 1)) * (0.9 + 0.1 * balance)
+            fast = lo * (GENOME["col_penalty"] ** (k - 1)) * (0.9 + 0.1 * balance)
             found.append((fast, cols, plan))
     if not found:
         return None
@@ -800,6 +861,12 @@ def _quality(cols, plan, ctx: Ctx, content, s_best: float = 1.0) -> float:
     """Design-quality objective for a fully placed candidate (0..1)."""
     sim = {e["id"]: dict(e) for e in content}
     _apply(cols, plan, ctx, sim)
+    return _score(sim, cols, ctx, content, plan["s"] / s_best if s_best > 0 else 1.0)
+
+
+def _score(sim, cols, ctx: Ctx, content, size: float) -> float:
+    """Score a placed layout: legibility, overall size (vs the best candidate),
+    hero prominence, reading order, structure, balance and fill (0..1)."""
     texts = [e for e in content if e["type"] == "text"]
     # legibility: how close each text gets to its readable floor
     leg = (sum(min(1.0, sim[e["id"]]["font_size"] / ctx.font_floor(e["font_size"])) for e in texts)
@@ -834,11 +901,10 @@ def _quality(cols, plan, ctx: Ctx, content, s_best: float = 1.0) -> float:
     fill = (u[2] - u[0]) * (u[3] - u[1]) / (ctx.W * ctx.H)
     cx, cy = (u[0] + u[2]) / 2, (u[1] + u[3]) / 2
     bal = 1 - 2 * math.hypot((cx - ctx.W / 2) / ctx.W, (cy - ctx.H / 2) / ctx.H)
-    size = plan["s"] / s_best if s_best > 0 else 1.0
     # structure fidelity: a target shaped like the source should keep the
     # source's single-column structure; wider targets earn more columns
     r = (ctx.W / ctx.H) / (ctx.src_w / ctx.src_h)
-    k_exp = max(1, round(r))
+    k_exp = max(1, round(r + (GENOME["split_bias"] if r > 1.5 else 0.0)))
     k = len(cols)
     struct = 1.0 if k <= k_exp else 0.5 ** (k - k_exp)
     # orphan columns: a column holding nothing but one short text block looks
@@ -851,8 +917,9 @@ def _quality(cols, plan, ctx: Ctx, content, s_best: float = 1.0) -> float:
                 small = b.w * b.h < 0.03 * ctx.src_w * ctx.src_h and b.elements[0]["id"] != ctx.logo_id
                 if short_text or small:
                     struct *= 0.6
-    return (0.22 * leg + 0.18 * size + 0.18 * hero + 0.12 * order + 0.12 * struct
-            + 0.09 * max(0.0, bal) + 0.09 * min(1.0, fill / 0.7))
+    g = GENOME
+    return (g["w_leg"] * leg + g["w_size"] * size + g["w_hero"] * hero + g["w_order"] * order
+            + g["w_struct"] * struct + g["w_bal"] * max(0.0, bal) + g["w_fill"] * min(1.0, fill / 0.7))
 
 
 # --------------------------------------------------------------------------
@@ -902,8 +969,14 @@ def _apply(cols, plan, ctx: Ctx, out: dict):
         side = _column_side(col, ctx)
         # spread rows a little, but keep the stack visually together:
         # inner gaps grow at most to ~3x the base gap, rest is split top/bottom
-        pad_y = min(free_y / (n + 1), gap * 2.0) if n > 1 else 0.0
+        pad_y = min(free_y / (n + 1), gap * GENOME["pad_y"]) if n > 1 else 0.0
         top = (free_y - pad_y * (n - 1)) / 2
+        if k > 1 and GENOME["zone_top_align"] > 0:
+            # zoning: columns hang from one shared top line (the tallest
+            # column's top) instead of each floating at its own center
+            tallest = max(t for _, _, t in plan["cols"])
+            shared = (max(0.0, AH - tallest) - pad_y * (n - 1)) / 2
+            top += GENOME["zone_top_align"] * (max(0.0, shared) - top)
         # default: compact stack, vertically centered
         row_ys, yy = [], ctx.margin + top
         for i, m in enumerate(row_ms):
@@ -989,7 +1062,7 @@ def _compress_body(col, row_ms, gaps, ys, s, ctx):
     for a, b in zip(body, body[1:]):
         sg = max(0.0, min(bl.box[1] for bl in col[b]) - max(bl.box[3] for bl in col[a]))
         cur = ys[b] - ys[a] - row_ms[a][1]
-        new[b] = new[a] + row_ms[a][1] + min(cur, max(gaps[a], sg * s * 1.25))
+        new[b] = new[a] + row_ms[a][1] + min(cur, max(gaps[a], sg * s * GENOME["body_gap_cap"]))
     last = body[-1]
     shift = ((ys[body[0]] + ys[last]) - (new[body[0]] + new[last])) / 2
     for i in body:
@@ -1279,15 +1352,35 @@ def _center_on_focus(sim, content, ctx: Ctx, logo, focus):
     print or the margins."""
     if focus is None:
         return
-    fixed = ({e["id"] for e in logo.elements} if logo is not None else set()) | ctx.fine_ids
-    body = [e for e in content if e["id"] not in fixed]
-    if not body:
+    band = _body_band(sim, content, ctx, logo)
+    if band is None:
         return
+    body, fixed, bb, lo, hi = band
     prim = ctx.hero_id if ctx.hero_id and ctx.hero_id not in fixed and ctx.hero_id in sim else None
-    bb = _union([_rot_bbox(sim[e["id"]]) for e in body])
     # the hero sits on the light; without one, the body as a whole does
     pb = _rot_bbox(sim[prim]) if prim is not None else bb
     dy = focus[1] - (pb[1] + pb[3]) / 2
+    if prim is None:
+        # a small text cluster sits right on the light; a tall body (no single
+        # hero) leans toward it but stays balanced in its free band
+        band = (hi - lo) + (bb[3] - bb[1])
+        t = GENOME["focus_blend"] * min(1.0, max(0.0, ((bb[3] - bb[1]) / max(band, 1e-6) - 0.3) / 0.3))
+        dy = (1 - t) * dy + t * (lo + hi) / 2
+    dy = min(max(dy, lo), hi)
+    if abs(dy) >= 1:
+        for e in body:
+            sim[e["id"]]["y"] += dy
+
+
+def _body_band(sim, content, ctx: Ctx, logo):
+    """The body (everything but the logo and the fine print) and how far it
+    may slide vertically: (body, fixed ids, body box, lowest dy, highest dy),
+    or None when it can't move without crossing the logo, fine print or margins."""
+    fixed = ({e["id"] for e in logo.elements} if logo is not None else set()) | ctx.fine_ids
+    body = [e for e in content if e["id"] not in fixed]
+    if not body:
+        return None
+    bb = _union([_rot_bbox(sim[e["id"]]) for e in body])
     lo, hi = ctx.margin - bb[1], ctx.H - ctx.margin - bb[3]
     for oid in fixed:
         if oid not in sim:
@@ -1300,19 +1393,154 @@ def _center_on_focus(sim, content, ctx: Ctx, logo, focus):
         elif ob[1] >= bb[3] - 1:
             hi = min(hi, ob[1] - (ctx.margin if oid in ctx.fine_ids else 0.5 * ctx.margin) - bb[3])
         else:
-            return
+            return None
     if lo > hi:
+        return None
+    return body, fixed, bb, lo, hi
+
+
+def _ink_box(el: dict):
+    """What is drawn: visible pixels for images, the box for text and shapes."""
+    if el["type"] == "image" and not el.get("rotation"):
+        return _visible_box(el)
+    return _rot_bbox(el)
+
+
+def _optical_anchor(sim, content, ctx: Ctx, logo):
+    """No background glow to sit on: slide the body so its visual mass (drawn
+    area, the hero weighted up) sits on the optical center of its free band,
+    a little above the geometric middle, where the eye expects it."""
+    lift, hero_w = GENOME["optical_lift"], GENOME["hero_mass"]
+    if lift <= 0 and hero_w <= 0:
         return
-    if prim is None:
-        # a small text cluster sits right on the light; a tall body (no single
-        # hero) leans toward it but stays balanced in its free band
-        band = (hi - lo) + (bb[3] - bb[1])
-        t = 0.5 * min(1.0, max(0.0, ((bb[3] - bb[1]) / max(band, 1e-6) - 0.3) / 0.3))
-        dy = (1 - t) * dy + t * (lo + hi) / 2
-    dy = min(max(dy, lo), hi)
+    band = _body_band(sim, content, ctx, logo)
+    if band is None:
+        return
+    body, _, bb, lo, hi = band
+    tot = my = 0.0
+    for e in body:
+        b = _ink_box(sim[e["id"]])
+        a = max(0.0, b[2] - b[0]) * max(0.0, b[3] - b[1])
+        if e["type"] == "text":
+            a *= 0.5  # glyphs cover about half their box
+        if e["id"] == ctx.hero_id:
+            a *= 1 + hero_w
+        tot, my = tot + a, my + a * (b[1] + b[3]) / 2
+    if tot <= 0:
+        return
+    top, bottom = bb[1] + lo, bb[3] + hi  # the band the body can occupy
+    target = (top + bottom) / 2 - lift * (bottom - top)
+    dy = min(max(target - my / tot, lo), hi)
     if abs(dy) >= 1:
         for e in body:
             sim[e["id"]]["y"] += dy
+
+
+def _relax(sim, blocks, ctx: Ctx, logo):
+    """Elastic clean-up: rigid blocks that sit closer than a minimum clearance
+    push apart along the axis that needs the smaller move, stay inside the
+    margins, and (with a spring) the gaps of a vertical stack even out. The
+    logo and fine print are anchors. Kept only if nothing ends up overlapping
+    that didn't before and crowding goes down."""
+    iters = int(GENOME["relax_iters"])
+    if (iters <= 0 and GENOME["relax_spring"] <= 0) or len(blocks) < 2:
+        return
+    W, H, m = ctx.W, ctx.H, ctx.margin
+    clear = GENOME["relax_clear"] * min(W, H)
+    pinned = ({e["id"] for e in logo.elements} if logo is not None else set()) | ctx.fine_ids
+    groups = [[e["id"] for e in b.elements] for b in blocks]
+    free = [not any(i in pinned for i in g) for g in groups]
+    src_box = [b.box for b in blocks]
+    layered = {(i, j) for i, j in itertools.combinations(range(len(blocks)), 2)
+               if _inter(src_box[i], src_box[j]) > 0}
+    before = {i: (sim[i]["x"], sim[i]["y"]) for g in groups for i in g}
+
+    def box(k):
+        return _union([_ink_box(sim[i]) for i in groups[k]])
+
+    def move(k, dx, dy):
+        for i in groups[k]:
+            sim[i]["x"] += dx
+            sim[i]["y"] += dy
+
+    def score():
+        over = crowd = 0
+        for i, j in itertools.combinations(range(len(groups)), 2):
+            if (i, j) in layered:
+                continue
+            a, b = box(i), box(j)
+            gx = max(a[0], b[0]) - min(a[2], b[2])
+            gy = max(a[1], b[1]) - min(a[3], b[3])
+            if gx < 0 and gy < 0:
+                over += 1
+            elif max(gx, gy) < clear:
+                crowd += 1
+        return over, crowd
+
+    def keep_inside(k):
+        b = box(k)
+        dx = (m - b[0]) if b[0] < m else (W - m - b[2]) if b[2] > W - m else 0.0
+        dy = (m - b[1]) if b[1] < m else (H - m - b[3]) if b[3] > H - m else 0.0
+        if b[2] - b[0] > W - 2 * m:
+            dx = (W - b[0] - b[2]) / 2
+        if b[3] - b[1] > H - 2 * m:
+            dy = (H - b[1] - b[3]) / 2
+        move(k, dx, dy)
+
+    s0 = score()
+    for _ in range(iters):
+        moved = False
+        for i, j in itertools.combinations(range(len(groups)), 2):
+            if (i, j) in layered or not (free[i] or free[j]):
+                continue
+            a, b = box(i), box(j)
+            px = min(a[2], b[2]) - max(a[0], b[0]) + clear  # penetration incl. clearance
+            py = min(a[3], b[3]) - max(a[1], b[1]) + clear
+            if px <= 0 or py <= 0:
+                continue
+            share = (0.5, 0.5) if free[i] and free[j] else ((1.0, 0.0) if free[i] else (0.0, 1.0))
+            if px < py:
+                d = -1 if (a[0] + a[2]) < (b[0] + b[2]) else 1
+                move(i, d * px * share[0], 0.0)
+                move(j, -d * px * share[1], 0.0)
+            else:
+                d = -1 if (a[1] + a[3]) < (b[1] + b[3]) else 1
+                move(i, 0.0, d * py * share[0])
+                move(j, 0.0, -d * py * share[1])
+            moved = True
+        for k in range(len(groups)):
+            if free[k]:
+                keep_inside(k)
+        if not moved:
+            break
+    if GENOME["relax_spring"] > 0:
+        # a vertical stack of free blocks: gaps move toward their mean
+        order = sorted((k for k in range(len(groups)) if free[k]), key=lambda k: box(k)[1])
+        stack = [k for k in order]
+        for a, b in zip(stack, stack[1:]):
+            if min(box(a)[2], box(b)[2]) - max(box(a)[0], box(b)[0]) <= 0:
+                stack = []  # side by side somewhere: not a simple stack
+                break
+        if len(stack) >= 3:
+            gaps = [box(b)[1] - box(a)[3] for a, b in zip(stack, stack[1:])]
+            if min(gaps) > 0:
+                mean = sum(gaps) / len(gaps)
+                c0 = (box(stack[0])[1] + box(stack[-1])[3]) / 2
+                y = box(stack[0])[1]
+                for k, g in zip(stack, gaps + [0.0]):
+                    b = box(k)
+                    move(k, 0.0, y - b[1])
+                    y += (b[3] - b[1]) + g + GENOME["relax_spring"] * (mean - g)
+                shift = c0 - (box(stack[0])[1] + box(stack[-1])[3]) / 2
+                for k in stack:
+                    move(k, 0.0, shift)
+    s1 = score()
+    inside = all(-0.5 <= sim[i]["x"] and sim[i]["x"] + sim[i]["width"] <= W + 0.5
+                 and -0.5 <= sim[i]["y"] and sim[i]["y"] + sim[i]["height"] <= H + 0.5
+                 for g in groups for i in g)
+    if not inside or s1[0] > s0[0] or (s1[0] == s0[0] and s1[1] > s0[1]):
+        for i, (x, y) in before.items():
+            sim[i]["x"], sim[i]["y"] = x, y
 
 
 def _clamp(el: dict, W: float, H: float):
@@ -1412,6 +1640,65 @@ def _brand_score(sim, ctx, content, logo, cta, style) -> float:
     sym_t = _grid_symmetry(list(boxes.values()), W, H)
     ws = style["symmetry"]
     return (0.45 * logo_t + 0.30 * cta_t + 0.25 * ws * sym_t) / (0.75 + 0.25 * ws)
+
+
+def _sub_ctx(ctx: Ctx, W: float, H: float) -> Ctx:
+    """A zone of the canvas: same rules and margins as the whole canvas."""
+    c = Ctx(ctx.src_w, ctx.src_h, W, H)
+    for k in ("margin", "f_ref", "hero_id", "min_font", "center_rows", "logo_id", "side_align", "logo_left",
+              "canvas_ratio", "fine_ids", "banner", "priority_ids"):
+        setattr(c, k, getattr(ctx, k))
+    c.full = (ctx.W, ctx.H)
+    return c
+
+
+def _type_scale(sim, content) -> float:
+    """Geometric mean of output / source size over the content."""
+    logs = [math.log(max(sim[e["id"]]["width"], 1e-6) / e["width"]) for e in content if e["width"] > 0]
+    return math.exp(sum(logs) / len(logs)) if logs else 1.0
+
+
+def _header_zone(logo, body_rows, content, ctx: Ctx, base):
+    """Header-zone candidates: the logo and the first text row (the headline)
+    stack in a full-width band on top; the remaining rows are solved again
+    in the space left beneath, so a tall source on a square or wide canvas
+    reads headline first, then visual and copy side by side."""
+    W, H = ctx.W, ctx.H
+    if len(body_rows) < 3 or not _is_text_row(body_rows[0]) or H < 200 or not 0.9 <= W / H <= 2.0:
+        return []
+    head_rows = ([[logo]] if logo is not None else []) + body_rows[:1]
+    rest = body_rows[1:]
+    head_ids = {e["id"] for r in head_rows for b in r for e in b.elements}
+    head_content = [e for e in content if e["id"] in head_ids]
+    rest_content = [e for e in content if e["id"] not in head_ids]
+    ts_ref = max(_type_scale(sim, content) for _, sim in base)
+    out = []
+    for f in (0.3, 0.38, 0.46):
+        hctx = _sub_ctx(ctx, W, f * H)
+        _set_row_caps(head_rows, hctx)
+        heads = [c for c in (_solve(head_rows, hctx, head_content, want_all=True) or []) if len(c[1]) == 1]
+        if not heads:
+            continue
+        _, hcols, hplan = heads[0]
+        hsim = {e["id"]: dict(e) for e in content}
+        _apply(hcols, hplan, hctx, hsim)
+        # the rest starts right under what the header actually drew
+        top = max(_rot_bbox(hsim[i])[3] for i in head_ids) + 2 * ctx.gap_src * hplan["s"]
+        rctx = _sub_ctx(ctx, W, H - top + ctx.margin)
+        if rctx.H < 0.35 * H:
+            continue
+        _set_row_caps(rest, rctx)
+        for _, cols, plan in (_solve(rest, rctx, rest_content, want_all=True) or [])[:4]:
+            sim = dict(hsim)
+            sim.update({e["id"]: dict(e) for e in rest_content})
+            _apply(cols, plan, rctx, sim)
+            for e in rest_content:
+                sim[e["id"]]["y"] += top - ctx.margin
+            # score as one layout: head rows read first, then the rest's columns
+            combined = [hcols[0] + cols[0]] + cols[1:]
+            size = min(1.0, _type_scale(sim, content) / ts_ref) if ts_ref > 0 else 1.0
+            out.append((_score(sim, combined, ctx, content, size), sim))
+    return out
 
 
 def _set_row_caps(rows, ctx):
@@ -1588,6 +1875,12 @@ def _resize(source: dict[str, Any], target_canvas: dict[str, Any]) -> dict[str, 
                     candidates.append((q, sim))
             _set_row_caps(rows, ctx)
 
+        # C) header zone: the logo and the headline span the whole width on top
+        # and the rest (visual + copy) is laid out beneath them
+        if GENOME["zone_header"] >= 0.5 and candidates:
+            candidates += _header_zone(logo, body_rows, content, ctx, candidates)
+            _set_row_caps(rows, ctx)
+
         if candidates:
             bw = style["brand_weight"]
             best = max(candidates,
@@ -1595,6 +1888,9 @@ def _resize(source: dict[str, Any], target_canvas: dict[str, Any]) -> dict[str, 
             sim = best[1]
             _dock_fine_print(sim, content, ctx)
             _center_on_focus(sim, content, ctx, logo, focus)
+            if focus is None:
+                _optical_anchor(sim, content, ctx, logo)
+            _relax(sim, blocks, ctx, logo)
             _align_text(sim, content, ctx, style)
             for i, el in sim.items():
                 out[i].update({k: el[k] for k in ("x", "y", "width", "height", "font_size", "text_align",
