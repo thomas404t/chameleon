@@ -65,7 +65,7 @@ STYLE = {
 GENOME = {
     'margin': 0.0398,
     'gap': 0.0227,
-    'pad_y': 3.0029,
+    'pad_y': 2.5809,
     'body_gap_cap': 1.0732,
     'col_gap': 0.01,
     'button_gap': 0.3,
@@ -99,9 +99,9 @@ GENOME = {
     'banner_spread': 0.6983,
     'panel_reflow': 1.0,
     'headline_lead': 1.0,
-    'relax_iters': 10,
-    'relax_clear': 0.0192,
-    'relax_spring': 0.0,
+    'relax_iters': 12,
+    'relax_clear': 0.0084,
+    'relax_spring': 0.4485,
 }
 # <<< GENOME
 
