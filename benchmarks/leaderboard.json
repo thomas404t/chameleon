@@ -1,5 +1,5 @@
 {
- "updated": "2026-10-30T07:45:39",
+ "updated": "2026-10-30T07:47:32",
  "champion": {
   "gen": 9,
   "name": "gen9-D1",
@@ -263,17 +263,99 @@
   },
   {
    "gen": 9,
-   "branch": null,
-   "tag": null,
+   "branch": "gen-9-elastic-repulsion",
+   "tag": "gen-9-score-90.47",
    "winner": "gen9-D1",
    "fitness": 90.467,
    "delta": 0.073,
    "seed_fitness": 90.394,
    "regression": 88.12,
    "strength": 0.3327500000000001
+  },
+  {
+   "gen": 10,
+   "branch": null,
+   "tag": null,
+   "winner": "gen9-D1",
+   "fitness": 90.467,
+   "delta": 0.0,
+   "seed_fitness": 90.467,
+   "regression": 88.12,
+   "strength": 0.24956250000000008
   }
  ],
  "ranking": [
+  {
+   "gen": 10,
+   "name": "gen10-S",
+   "family": "S",
+   "strategy": "synthesis",
+   "changed": {
+    "focus_blend": [
+     0.5,
+     0.1932
+    ],
+    "hero_floor": [
+     0.6027,
+     0.6569
+    ],
+    "image_floor": [
+     0.3,
+     0.2472
+    ],
+    "w_hero": [
+     0.1177,
+     0.1681
+    ]
+   },
+   "fitness": 90.517
+  },
+  {
+   "gen": 10,
+   "name": "gen10-C2",
+   "family": "C",
+   "strategy": "type-flow",
+   "changed": {
+    "type_gamma": [
+     0.6,
+     0.838
+    ],
+    "w_size": [
+     0.18,
+     0.2068
+    ],
+    "min_font_frac": [
+     0.09,
+     0.0941
+    ]
+   },
+   "fitness": 90.486
+  },
+  {
+   "gen": 10,
+   "name": "gen10-A2",
+   "family": "A",
+   "strategy": "hero-anchor",
+   "changed": {
+    "image_floor": [
+     0.3,
+     0.1801
+    ],
+    "hero_floor": [
+     0.6027,
+     0.35
+    ],
+    "w_bal": [
+     0.09,
+     0.0792
+    ],
+    "optical_lift": [
+     0.0,
+     0.0279
+    ]
+   },
+   "fitness": 90.474
+  },
   {
    "gen": 9,
    "name": "gen9-D1",
@@ -300,6 +382,78 @@
    "fitness": 90.467
   },
   {
+   "gen": 10,
+   "name": "gen10-B3",
+   "family": "B",
+   "strategy": "grid-zoning",
+   "changed": {
+    "w_fill": [
+     0.0359,
+     0.103
+    ],
+    "col_penalty": [
+     0.94,
+     0.9489
+    ],
+    "zone_top_align": [
+     0.2017,
+     0.2588
+    ]
+   },
+   "fitness": 90.467
+  },
+  {
+   "gen": 10,
+   "name": "gen10-D4",
+   "family": "D",
+   "strategy": "elastic-repulsion",
+   "changed": {
+    "relax_clear": [
+     0.0084,
+     0.005
+    ],
+    "pad_y": [
+     2.5809,
+     2.864
+    ]
+   },
+   "fitness": 90.467
+  },
+  {
+   "gen": 10,
+   "name": "gen10-B2",
+   "family": "B",
+   "strategy": "grid-zoning",
+   "changed": {
+    "col_penalty": [
+     0.94,
+     0.9164
+    ],
+    "w_fill": [
+     0.0359,
+     0.02
+    ]
+   },
+   "fitness": 90.465
+  },
+  {
+   "gen": 10,
+   "name": "gen10-D1",
+   "family": "D",
+   "strategy": "elastic-repulsion",
+   "changed": {
+    "button_gap": [
+     0.3,
+     0.2619
+    ],
+    "body_gap_cap": [
+     1.0732,
+     1.4968
+    ]
+   },
+   "fitness": 90.463
+  },
+  {
    "gen": 9,
    "name": "gen9-A3",
    "family": "A",
@@ -323,6 +477,77 @@
     ]
    },
    "fitness": 90.459
+  },
+  {
+   "gen": 10,
+   "name": "gen10-C3",
+   "family": "C",
+   "strategy": "type-flow",
+   "changed": {
+    "w_leg": [
+     0.22,
+     0.3957
+    ],
+    "headline_lead": [
+     1.0,
+     0.6
+    ],
+    "min_font": [
+     11.0,
+     9.096
+    ]
+   },
+   "fitness": 90.451
+  },
+  {
+   "gen": 10,
+   "name": "gen10-A3",
+   "family": "A",
+   "strategy": "hero-anchor",
+   "changed": {
+    "hero_mass": [
+     0.0,
+     1.5757
+    ],
+    "w_hero": [
+     0.1177,
+     0.1922
+    ],
+    "w_bal": [
+     0.09,
+     0.1908
+    ]
+   },
+   "fitness": 90.41
+  },
+  {
+   "gen": 10,
+   "name": "gen10-A4",
+   "family": "A",
+   "strategy": "hero-anchor",
+   "changed": {
+    "w_bal": [
+     0.09,
+     0.1509
+    ],
+    "logo_area": [
+     0.0307,
+     0.0318
+    ],
+    "w_hero": [
+     0.1177,
+     0.06
+    ],
+    "hero_floor": [
+     0.6027,
+     0.6262
+    ],
+    "type_gamma": [
+     0.6,
+     0.7184
+    ]
+   },
+   "fitness": 90.398
   },
   {
    "gen": 9,
@@ -620,6 +845,27 @@
    "fitness": 90.325
   },
   {
+   "gen": 10,
+   "name": "gen10-B4",
+   "family": "B",
+   "strategy": "grid-zoning",
+   "changed": {
+    "symmetry": [
+     0.6819,
+     1.0
+    ],
+    "zone_top_align": [
+     0.2017,
+     0.7559
+    ],
+    "min_font": [
+     11.0,
+     12.5548
+    ]
+   },
+   "fitness": 90.277
+  },
+  {
    "gen": 9,
    "name": "gen9-A4",
    "family": "A",
@@ -746,6 +992,52 @@
    "fitness": 90.246
   },
   {
+   "gen": 10,
+   "name": "gen10-D3",
+   "family": "D",
+   "strategy": "elastic-repulsion",
+   "changed": {
+    "pad_y": [
+     2.5809,
+     0.5782
+    ],
+    "relax_clear": [
+     0.0084,
+     0.005
+    ],
+    "gap": [
+     0.0227,
+     0.0188
+    ]
+   },
+   "fitness": 90.231
+  },
+  {
+   "gen": 10,
+   "name": "gen10-C1",
+   "family": "C",
+   "strategy": "type-flow",
+   "changed": {
+    "type_k": [
+     6.0,
+     3.0
+    ],
+    "min_font": [
+     11.0,
+     14.314
+    ],
+    "priority_boost": [
+     1.6,
+     1.1158
+    ],
+    "headline_lead": [
+     1.0,
+     1.0808
+    ]
+   },
+   "fitness": 90.223
+  },
+  {
    "gen": 8,
    "name": "gen8-A2",
    "family": "A",
@@ -821,6 +1113,27 @@
    "fitness": 90.215
   },
   {
+   "gen": 10,
+   "name": "gen10-A1",
+   "family": "A",
+   "strategy": "hero-anchor",
+   "changed": {
+    "image_floor": [
+     0.3,
+     0.3238
+    ],
+    "w_bal": [
+     0.09,
+     0.1047
+    ],
+    "ink_v": [
+     0.0,
+     1.0
+    ]
+   },
+   "fitness": 90.211
+  },
+  {
    "gen": 7,
    "name": "gen7-B2",
    "family": "B",
@@ -853,6 +1166,23 @@
     ]
    },
    "fitness": 90.168
+  },
+  {
+   "gen": 10,
+   "name": "gen10-C4",
+   "family": "C",
+   "strategy": "type-flow",
+   "changed": {
+    "min_font_frac": [
+     0.09,
+     0.1047
+    ],
+    "type_k": [
+     6.0,
+     4.6146
+    ]
+   },
+   "fitness": 90.133
   },
   {
    "gen": 8,
@@ -1153,6 +1483,31 @@
    "fitness": 89.931
   },
   {
+   "gen": 10,
+   "name": "gen10-D2",
+   "family": "D",
+   "strategy": "elastic-repulsion",
+   "changed": {
+    "relax_iters": [
+     12,
+     9
+    ],
+    "margin": [
+     0.0398,
+     0.025
+    ],
+    "button_gap": [
+     0.3,
+     0.4205
+    ],
+    "body_gap_cap": [
+     1.0732,
+     1.0696
+    ]
+   },
+   "fitness": 89.928
+  },
+  {
    "gen": 9,
    "name": "gen9-B3",
    "family": "B",
@@ -1193,6 +1548,27 @@
     ]
    },
    "fitness": 89.817
+  },
+  {
+   "gen": 10,
+   "name": "gen10-B1",
+   "family": "B",
+   "strategy": "grid-zoning",
+   "changed": {
+    "w_fill": [
+     0.0359,
+     0.02
+    ],
+    "symmetry": [
+     0.6819,
+     0.4034
+    ],
+    "zone_top_align": [
+     0.2017,
+     0.0
+    ]
+   },
+   "fitness": 89.711
   },
   {
    "gen": 7,
