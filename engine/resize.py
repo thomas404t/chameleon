@@ -64,7 +64,7 @@ STYLE = {
 # >>> GENOME
 GENOME = {
     'margin': 0.0398,
-    'gap': 0.0197,
+    'gap': 0.0227,
     'pad_y': 3.0029,
     'body_gap_cap': 1.0732,
     'col_gap': 0.01,
@@ -75,12 +75,12 @@ GENOME = {
     'priority_boost': 1.6,
     'min_font': 11.0,
     'min_font_frac': 0.09,
-    'hero_floor': 0.55,
+    'hero_floor': 0.6027,
     'image_floor': 0.3,
-    'logo_area': 0.045,
+    'logo_area': 0.0307,
     'w_leg': 0.22,
     'w_size': 0.18,
-    'w_hero': 0.18,
+    'w_hero': 0.1177,
     'w_order': 0.1309,
     'w_struct': 0.12,
     'w_bal': 0.09,
@@ -95,8 +95,8 @@ GENOME = {
     'zone_top_align': 0.2183,
     'zone_header': 1.0,
     'headline_lead': 1.0,
-    'relax_iters': 0,
-    'relax_clear': 0.02,
+    'relax_iters': 10,
+    'relax_clear': 0.0077,
     'relax_spring': 0.0,
 }
 # <<< GENOME
