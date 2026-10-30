@@ -91,9 +91,13 @@ GENOME = {
     'focus_blend': 0.5,
     'optical_lift': 0.0,
     'hero_mass': 0.0,
+    'ink_v': 0.0,
+    'shortcut_ink': 1.0,
     'split_bias': -0.8,
     'zone_top_align': 0.2183,
     'zone_header': 1.0,
+    'banner_spread': 1.0,
+    'panel_reflow': 1.0,
     'headline_lead': 1.0,
     'relax_iters': 10,
     'relax_clear': 0.0077,
@@ -194,6 +198,35 @@ def _fits_box(el: dict, font_size: float, width: float, height: float) -> bool:
         return True
     need, fits = text_box_height(el, font_size, width)
     return fits and need <= height * 1.02 + 0.5
+
+
+@lru_cache(maxsize=64)
+def _font_extent(family: str, weight: str, style: str) -> float:
+    """Height of one line of ink (descent - ascent) per px of font size."""
+    try:
+        import skia
+
+        font = skia.Font(skia.Typeface.MakeFromData(_font_manager().lookup(family, weight, style)), 100)
+        m = font.getMetrics()
+        return (m.fDescent - m.fAscent) / 100
+    except Exception:
+        return 1.25
+
+
+def _ink_fits(el: dict, font_size: float, width: float, height: float) -> bool:
+    """Does the text as the renderer draws it (wrapped at the float size,
+    glyphs at int(size)) stay inside its box, within 4%? A designer's box is
+    often drawn a little tighter than the line-height maths, but what counts
+    is the ink."""
+    if el.get("rotation") or not el.get("content"):
+        return True
+    if width <= 0 or height <= 0:
+        return False
+    weight, style = _style(el)
+    lines, widest = _measure(el["content"], el["font_family"], weight, style, font_size, width)
+    lh = el.get("line_height", DEFAULT_LINE_HEIGHT) or DEFAULT_LINE_HEIGHT
+    ink = (lines - 1) * font_size * lh + int(font_size) * _font_extent(el["font_family"], weight, style)
+    return widest <= width and ink <= height * 1.04
 
 
 def text_box_height(el: dict, font_size: float, width: float) -> tuple[float, bool]:
@@ -334,6 +367,17 @@ class Block:
                     spans.append((b[0], b[2]))
             self._ink[key] = (min(a for a, _ in spans), max(b for _, b in spans))
         return self._ink[key]
+
+    def ink_y(self) -> tuple[float, float]:
+        """Vertical extent of what is drawn (visible image pixels; other
+        elements by their box), in source px."""
+        if not hasattr(self, "_iy"):
+            spans = []
+            for e in self.elements:
+                b = _visible_box(e) if e["type"] == "image" and not e.get("rotation") else _rot_bbox(e)
+                spans.append((b[1], b[3]))
+            self._iy = (min(a for a, _ in spans), max(b for _, b in spans))
+        return self._iy
 
     @property
     def w(self):
@@ -575,6 +619,17 @@ def _ink_sizes(row, sizes, ctx, edges=(True, True)):
     return out, pads, (sorted(src_gaps)[len(src_gaps) // 2] if src_gaps else 0.0)
 
 
+def _vtrim(b: "Block", h: float, ctx) -> tuple[float, float]:
+    """How much of a picture's transparent top / bottom padding (at height h)
+    its row may let overlap the neighbours: at most a margin each, so the
+    padded box always stays on the canvas."""
+    if not GENOME["ink_v"] or b.flexible_text or not any(e["type"] == "image" for e in b.elements):
+        return 0.0, 0.0
+    k = h / max(b.h, 1e-6)
+    y0, y1 = b.ink_y()
+    return min(max(0.0, (y0 - b.box[1]) * k), ctx.margin), min(max(0.0, (b.box[3] - y1) * k), ctx.margin)
+
+
 def _is_text_row(row) -> bool:
     return len(row) == 1 and row[0].flexible_text
 
@@ -644,7 +699,9 @@ def _row_metrics(row: list[Block], s: float, col_w: float, ctx: Ctx, edges=(True
             rgap = max(rgap, min(sgap, (col_w - sum(w for w, _ in sizes)) / (n - 1)))
     rw = sum(w for w, _ in sizes) + rgap * (n - 1)
     if rw <= col_w + 0.5:
-        return rw, max(h for _, h in sizes), sizes, {"gap": rgap, "pads": pads if ink else None}
+        vt = [_vtrim(b, h, ctx) for b, (_, h) in zip(row, sizes)] if ink else None
+        rh = max(h - (vt[i][0] + vt[i][1] if vt else 0.0) for i, (_, h) in enumerate(sizes))
+        return rw, rh, sizes, {"gap": rgap, "pads": pads if ink else None, "vtrim": vt}
     # Too wide side by side. Like items (options, badges) keep their side-by-side
     # arrangement, shrinking to fit, as long as their text stays readable;
     # otherwise they wrap into the widest grid that is. Other rows just stack.
@@ -664,11 +721,13 @@ def _row_metrics(row: list[Block], s: float, col_w: float, ctx: Ctx, edges=(True
                 continue
         g = max(gap, BUTTON_GAP * hmin * f) if shaped else gap
         sz = [(w * f, h * f) for w, h in sizes]
-        lines = [sz[i:i + c] for i in range(0, n, c)]
-        gw = max(sum(w for w, _ in ln) + g * (len(ln) - 1) for ln in lines)
-        gh = sum(max(h for _, h in ln) for ln in lines) + g * (len(lines) - 1)
+        vt = [(a * f, z * f) for a, z in (_vtrim(b, h, ctx) for b, (_, h) in zip(row, sizes))] if ink else None
+        eff = [h - (vt[i][0] + vt[i][1] if vt else 0.0) for i, (_, h) in enumerate(sz)]
+        lines = [list(range(i, min(i + c, n))) for i in range(0, n, c)]
+        gw = max(sum(sz[j][0] for j in ln) + g * (len(ln) - 1) for ln in lines)
+        gh = sum(max(eff[j] for j in ln) for ln in lines) + g * (len(lines) - 1)
         return gw, gh, sz, {"gap": g, "mult": f, "grid": c,
-                            "pads": [p * f for p in pads] if ink else None}
+                            "pads": [p * f for p in pads] if ink else None, "vtrim": vt}
     return None
 
 
@@ -1000,8 +1059,10 @@ def _apply(cols, plan, ctx: Ctx, out: dict):
                 c, yy = meta["grid"], y
                 for i in range(0, len(row), c):
                     line = list(zip(row[i:i + c], sizes[i:i + c]))
+                    vt = meta.get("vtrim")
+                    tr = [vt[i + j] if vt else (0.0, 0.0) for j in range(len(line))]
                     lw = sum(w for _, (w, _) in line) + rgap * (len(line) - 1)
-                    lh = max(h for _, (_, h) in line)
+                    lh = max(h - t[0] - t[1] for (_, (_, h)), t in zip(line, tr))
                     cur = x + (cw - lw) / 2
                     if side == "left":
                         cur = x
@@ -1009,7 +1070,8 @@ def _apply(cols, plan, ctx: Ctx, out: dict):
                         cur = x + cw - lw
                     for j, (b, (w, h)) in enumerate(line):
                         pads = meta.get("pads")
-                        _place_block(b, cur, yy + (lh - h) / 2, w, h, s, out, ctx, mult,
+                        t0, t1 = tr[j]
+                        _place_block(b, cur, yy + (lh - (h - t0 - t1)) / 2 - t0, w, h, s, out, ctx, mult,
                                      pads[i + j] if pads else None)
                         _mark_col(b, out, x, cw)
                         cur += w + rgap
@@ -1040,8 +1102,9 @@ def _apply(cols, plan, ctx: Ctx, out: dict):
                     xs.append(cur)
                     cur += w + rgap
             pads = meta.get("pads") or [None] * len(row)
-            for b, (w, h), bx, pd in zip(row, sizes, xs, pads):
-                _place_block(b, bx, y + (rh - h) / 2, w, h, s, out, ctx, mult, pd)
+            vts = meta.get("vtrim") or [(0.0, 0.0)] * len(row)
+            for b, (w, h), bx, pd, (t0, t1) in zip(row, sizes, xs, pads, vts):
+                _place_block(b, bx, y + (rh - (h - t0 - t1)) / 2 - t0, w, h, s, out, ctx, mult, pd)
                 _mark_col(b, out, x, cw)
         x += cw + plan["col_gap"] + pad_x
 
@@ -1125,6 +1188,13 @@ def _content_width(el: dict) -> float:
     return max(best, cur)
 
 
+def _wrapped(el: dict, width: float) -> str:
+    """The text as the renderer wraps it at this width."""
+    from renderer.converter.wrap import wrap_text
+    widths = list(_char_widths(el["content"], el["font_family"], *_style(el), el["font_size"]))
+    return wrap_text(el["content"], widths, width)
+
+
 def _align_text(sim: dict, content, ctx: Ctx, style: dict):
     """Text alignment follows placement: a block centered in its column reads
     centered, a block flush to a side reads from that side, and a block whose
@@ -1204,26 +1274,25 @@ def _avoid_content(decor, content, out, ctx: Ctx):
         if src["type"] == "shape" and (src.get("opacity", 1) or 0) <= 0.5:
             continue
         el = out[src["id"]]
-        w, h = el["width"], el["height"]
-        cands = [(el["x"], el["y"])]
-        for fx in (0.0, 0.5, 1.0):
-            for fy in (0.0, 0.5, 1.0):
-                cands.append((m + fx * (ctx.W - w - 2 * m), m + fy * (ctx.H - h - 2 * m)))
+        x0, y0, w0, h0 = el["x"], el["y"], el["width"], el["height"]
+        # the biggest size that sits clear of all content, nearest its own
+        # spot; a 9 x 9 grid of positions over the canvas at each size
         best = None
-        for (x, y) in cands:
-            el["x"], el["y"] = x, y
-            ov = overlap(el)
-            d = math.hypot(x - cands[0][0], y - cands[0][1])
-            key = (round(ov, 1), d)
-            if best is None or key < best[0]:
-                best = (key, x, y)
-        el["x"], el["y"] = best[1], best[2]
-        # if every spot collides, shrink it toward the least-bad spot
-        if best[0][0] > 0:
-            for _ in range(6):
-                el["width"] *= 0.7; el["height"] *= 0.7
-                if overlap(el) == 0:
-                    break
+        for sc in (1.0, 0.8, 0.64, 0.5, 0.4, 0.3, 0.2):
+            w, h = w0 * sc, h0 * sc
+            cands = [(x0 + (w0 - w) / 2, y0 + (h0 - h) / 2)]
+            for fx in range(9):
+                for fy in range(9):
+                    cands.append((m + fx / 8 * max(0.0, ctx.W - w - 2 * m), m + fy / 8 * max(0.0, ctx.H - h - 2 * m)))
+            for (x, y) in cands:
+                el.update(x=x, y=y, width=w, height=h)
+                ov = overlap(el)
+                key = (round(ov / max(w * h, 1e-6), 2), 1 - sc, math.hypot(x - x0, y - y0))
+                if best is None or key < best[0]:
+                    best = (key, x, y, w, h)
+            if best[0][0] == 0:
+                break
+        el.update(x=best[1], y=best[2], width=best[3], height=best[4])
 
 
 def _inter(a, b) -> float:
@@ -1282,6 +1351,76 @@ def _place_soft_decor(soft, out, content, ctx: Ctx, logo):
         el.update(x=best[1], y=best[2], width=w, height=h)
         placed.append((best[1], best[2], best[1] + w, best[2] + h))
         centers.append(((best[1] + w / 2) / W, (best[2] + h / 2) / H))
+
+
+def _spread_banner(sim, content, ctx: Ctx):
+    """Short banners whose content leaves a lot of the width empty: the
+    content's groups (logo, message, call to action...) spread out so the
+    gaps between them and to the margins are even, instead of everything
+    packing to the left. Text boxes are first tightened to their ink (same
+    line breaks: a box at least as wide as its widest line wraps the same)."""
+    t = GENOME["banner_spread"]
+    if t <= 0 or not ctx.banner or len(content) < 2:
+        return
+    W, m = ctx.W, ctx.margin
+    before = {e["id"]: (sim[e["id"]]["x"], sim[e["id"]]["width"]) for e in content}
+    ext = {}
+    for e in content:
+        el = sim[e["id"]]
+        if e["type"] == "text" and not e.get("group_id") and not e.get("rotation") and el.get("content"):
+            try:
+                # the renderer's wrap counts the space after a line's last word,
+                # so keep a space of slack, and keep the box only if the line
+                # breaks come out identical
+                cw = min(el["width"], _content_width(el) + 0.45 * el["font_size"] + 2.0)
+                if _wrapped(el, cw) != _wrapped(el, el["width"]):
+                    cw = el["width"]
+            except Exception:
+                cw = el["width"]
+            a = el.get("text_align", "left")
+            x0 = el["x"] if a == "left" else el["x"] + el["width"] - cw if a == "right" \
+                else el["x"] + (el["width"] - cw) / 2
+            el["x"], el["width"] = x0, cw
+        b = _ink_box(el) if e["type"] != "text" else _rot_bbox(el)
+        ext[e["id"]] = (b[0], b[2])
+    # groups: elements whose ink overlaps horizontally, and group members
+    ids = [e["id"] for e in content]
+    parent = {i: i for i in ids}
+
+    def find(i):
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+    gid = {}
+    for e in content:
+        if e.get("group_id"):
+            if e["group_id"] in gid:
+                parent[find(e["id"])] = find(gid[e["group_id"]])
+            gid.setdefault(e["group_id"], e["id"])
+    for a, b in itertools.combinations(ids, 2):
+        if min(ext[a][1], ext[b][1]) - max(ext[a][0], ext[b][0]) > -0.5 * m:
+            parent[find(a)] = find(b)
+    groups = {}
+    for i in ids:
+        groups.setdefault(find(i), []).append(i)
+    spans = sorted(((min(ext[i][0] for i in g), max(ext[i][1] for i in g), g) for g in groups.values()),
+                   key=lambda s_: s_[0])
+    if len(spans) < 2:
+        return
+    free = W - 2 * m - sum(b - a for a, b, _ in spans)
+    if free < 0.12 * W:
+        return
+    gap = free / (len(spans) + 1)
+    x = m + gap
+    for a, b, g in spans:
+        dx = t * (x - a)
+        for i in g:
+            sim[i]["x"] += dx
+        x += (b - a) + gap
+    if any(sim[i]["x"] < -0.5 or sim[i]["x"] + sim[i]["width"] > W + 0.5 for i in ids):
+        for i, (x0, w0) in before.items():
+            sim[i]["x"], sim[i]["width"] = x0, w0
 
 
 def _dock_fine_print(sim, content, ctx: Ctx):
@@ -1739,7 +1878,94 @@ def _safe_fallback(source: dict[str, Any], target_canvas: dict[str, Any]) -> dic
     return {"canvas": {"width": W, "height": H}, "elements": elements}
 
 
-def _resize(source: dict[str, Any], target_canvas: dict[str, Any]) -> dict[str, Any]:
+def _same_shape(source, target_canvas, ctx: Ctx, k: float):
+    """The designer's arrangement scaled as-is (same-shape canvas), if every
+    text stays readable and its ink fits its box. A box drawn a little too
+    short for its ink grows to fit, when the taller box touches nothing it
+    didn't touch in the source. None if the layout can't be kept."""
+    els = source["elements"]
+    grow = {}
+    for e in els:
+        if e["type"] != "text" or not e.get("content"):
+            continue
+        fs = e["font_size"] * k
+        if fs < 0.85 * ctx.font_floor(e["font_size"]):
+            return None
+        if _ink_fits(e, fs, e["width"] * k, e["height"] * k):
+            continue
+        weight, style = _style(e)
+        lines, widest = _measure(e["content"], e["font_family"], weight, style, fs, e["width"] * k)
+        if widest > e["width"] * k or e.get("rotation"):
+            return None
+        lh = e.get("line_height", DEFAULT_LINE_HEIGHT) or DEFAULT_LINE_HEIGHT
+        need = ((lines - 1) * fs * lh + int(fs) * _font_extent(e["font_family"], weight, style)) / k * 1.01
+        old = (e["x"], e["y"], e["x"] + e["width"], e["y"] + e["height"])
+        new = (old[0], old[1], old[2], old[1] + need)
+        if new[3] > ctx.src_h:
+            return None
+        for o in els:
+            if o is e or (o.get("group_id") and o.get("group_id") == e.get("group_id")) \
+                    or _classify(o, ctx.src_w, ctx.src_h) != "content":
+                continue
+            ob = _rot_bbox(o)
+            if _inter(new, ob) > _inter(old, ob) + 1e-6:
+                return None
+        grow[e["id"]] = need
+    if grow:
+        source = dict(source, elements=[dict(e, height=grow[e["id"]]) if e["id"] in grow else e for e in els])
+    return _safe_fallback(source, target_canvas)
+
+
+def _find_panels(content) -> dict:
+    """Opaque cards behind copy: an ungrouped, opaque, unrotated shape whose
+    box holds at least two other content elements (one of them text), all
+    drawn above it, with every group either fully inside or fully outside.
+    Returns {card id: (card, [member ids])}."""
+    found = {}
+    for p in content:
+        if p["type"] != "shape" or p.get("group_id") or p.get("rotation") or (p.get("opacity", 1) or 0) <= 0.5:
+            continue
+        x0, y0, x1, y1 = p["x"] - 2, p["y"] - 2, p["x"] + p["width"] + 2, p["y"] + p["height"] + 2
+
+        def inside(e):
+            b = _rot_bbox(e)
+            return b[0] >= x0 and b[1] >= y0 and b[2] <= x1 and b[3] <= y1
+        members = [e for e in content if e is not p and inside(e)]
+        if len(members) < 2 or not any(e["type"] == "text" for e in members):
+            continue
+        if any((e.get("z_index") or 0) <= (p.get("z_index") or 0) for e in members):
+            continue
+        gids = {e.get("group_id") for e in members if e.get("group_id")}
+        if any(e.get("group_id") in gids and not inside(e) for e in content if e is not p):
+            continue
+        found[p["id"]] = (p, [e["id"] for e in members])
+    return found
+
+
+def _wrap_panels(panels, out, content, ctx: Ctx) -> bool:
+    """Each card wraps its re-laid-out copy, with its source padding scaled
+    like the copy. False if a card would cover anything that isn't its own."""
+    for pid, (card, mids) in panels.items():
+        u = _union([_rot_bbox(out[m]) for m in mids])
+        su = _union([_rot_bbox(e) for e in content if e["id"] in mids])
+        sw_, sh_ = max(su[2] - su[0], 1e-6), max(su[3] - su[1], 1e-6)
+        k = math.sqrt(max(u[2] - u[0], 1e-6) * max(u[3] - u[1], 1e-6) / (sw_ * sh_))
+        pads = (max(0.0, su[0] - card["x"]) * k, max(0.0, su[1] - card["y"]) * k,
+                max(0.0, card["x"] + card["width"] - su[2]) * k, max(0.0, card["y"] + card["height"] - su[3]) * k)
+        # the card keeps half a margin from the canvas edges (its padding gives way)
+        edge = 0.5 * ctx.margin
+        box = (min(u[0], max(edge, u[0] - pads[0])), min(u[1], max(edge, u[1] - pads[1])),
+               max(u[2], min(ctx.W - edge, u[2] + pads[2])), max(u[3], min(ctx.H - edge, u[3] + pads[3])))
+        for e in content:
+            if e["id"] in mids or e["id"] == pid or _classify(e, ctx.src_w, ctx.src_h) != "content":
+                continue
+            if _inter(box, _ink_box(out[e["id"]])) > 0:
+                return False
+        out[pid].update(x=box[0], y=box[1], width=box[2] - box[0], height=box[3] - box[1])
+    return True
+
+
+def _resize(source: dict[str, Any], target_canvas: dict[str, Any], use_panels: bool = True) -> dict[str, Any]:
     src_w, src_h = source["canvas"]["width"], source["canvas"]["height"]
     W, H = target_canvas["width"], target_canvas["height"]
     ctx = Ctx(src_w, src_h, W, H)
@@ -1750,11 +1976,15 @@ def _resize(source: dict[str, Any], target_canvas: dict[str, Any]) -> dict[str, 
     # Same shape: the designer's arrangement already fits, so don't rearrange
     # it for no reason; scale it faithfully as long as every text stays readable
     k = min(W / src_w, H / src_h)
-    if abs(math.log((W / H) / (src_w / src_h))) < math.log(1.08) and all(
-            e["font_size"] * k >= 0.85 * ctx.font_floor(e["font_size"])
-            and _fits_box(e, e["font_size"] * k, e["width"] * k, e["height"] * k)
-            for e in source["elements"] if e["type"] == "text"):
-        return _safe_fallback(source, target_canvas)
+    if abs(math.log((W / H) / (src_w / src_h))) < math.log(1.08):
+        if GENOME["shortcut_ink"] >= 0.5:
+            same = _same_shape(source, target_canvas, ctx, k)
+            if same is not None:
+                return same
+        elif all(e["font_size"] * k >= 0.85 * ctx.font_floor(e["font_size"])
+                 and _fits_box(e, e["font_size"] * k, e["width"] * k, e["height"] * k)
+                 for e in source["elements"] if e["type"] == "text"):
+            return _safe_fallback(source, target_canvas)
 
     out = {el["id"]: copy.deepcopy(el) for el in source["elements"]}
     by_class: dict[str, list[dict]] = {"background": [], "decor": [], "content": []}
@@ -1805,6 +2035,13 @@ def _resize(source: dict[str, Any], target_canvas: dict[str, Any]) -> dict[str, 
     ctx.side_align = style["text_align"] == "follow_layout"
 
     content = by_class["content"]
+    # cards behind copy step out of the layout and re-wrap it afterwards
+    # (only when the canvas changes shape a lot: on a similar shape the card
+    # keeps its proportions best by scaling with its copy)
+    reshape = abs(math.log2((W / H) / (src_w / src_h)))
+    panels = _find_panels(content) if use_panels and GENOME["panel_reflow"] >= 0.5 and reshape > 1.5 else {}
+    if panels:
+        content = [e for e in content if e["id"] not in panels]
     if content:
         blocks = _build_blocks(content)
         logo, cta = _find_roles(blocks, content, src_w, src_h)
@@ -1889,6 +2126,7 @@ def _resize(source: dict[str, Any], target_canvas: dict[str, Any]) -> dict[str, 
                 _optical_anchor(sim, content, ctx, logo)
             _relax(sim, blocks, ctx, logo)
             _align_text(sim, content, ctx, style)
+            _spread_banner(sim, content, ctx)
             for i, el in sim.items():
                 out[i].update({k: el[k] for k in ("x", "y", "width", "height", "font_size", "text_align",
                                                   "line_height") if k in el})
@@ -1903,6 +2141,8 @@ def _resize(source: dict[str, Any], target_canvas: dict[str, Any]) -> dict[str, 
                     o["font_size"] = max(1.0, el["font_size"] * s)
 
     _enforce_hierarchy(source["elements"], out, by_class["content"])
+    if panels and not _wrap_panels(panels, out, by_class["content"], ctx):
+        return _resize(source, target_canvas, use_panels=False)
     _place_soft_decor([e for e in by_class["decor"] if e["type"] == "shape"], out, by_class["content"], ctx, logo)
     _avoid_content(by_class["decor"], by_class["content"], out, ctx)
 

@@ -18,6 +18,10 @@ Each generation:
 Finally the best generation is merged into `--finalize-to` (checked out)
 and OVERNIGHT_REPORT.md is written.
 
+A later campaign continues the same leaderboard: `--reseed` scores the
+current engine (e.g. with new strategy code) as the new champion and builds
+the next generations on the current HEAD.
+
 Commits are made with git plumbing on a temporary index (explicit files
 only, the working tree is never touched until the final checkout), authored
 by the repository's configured user.
@@ -270,8 +274,8 @@ def run_generation(G: int, st: dict, a) -> dict:
         lb, gj = RUNS / "leaderboard.json", RUNS / f"gen-{G}.json"
         lb.write_text(json.dumps(leaderboard(st), indent=1))
         gj.write_text(json.dumps(gen_rec, indent=1))
-        parent = st["generations"][-2]["branch"] if len(st["generations"]) > 1 and st["generations"][-2]["branch"] \
-            else st["parent"]
+        parent = st.get("lineage") or (st["generations"][-2]["branch"] if len(st["generations"]) > 1
+                                        and st["generations"][-2]["branch"] else st["parent"])
         msg = (f"Generation {G}: {descriptor} ({champ['name']}), fitness {champ['fitness']:.2f} "
                f"({gen_rec['delta']:+.2f})\n\n"
                + "\n".join(f"{r['name']:12s} {r['strategy']:17s} {r['fitness']:7.3f}" for r in results))
@@ -286,6 +290,7 @@ def run_generation(G: int, st: dict, a) -> dict:
                                   "seed_fitness": seed_fit, "candidates": len(results),
                                   "date": datetime.now().isoformat(timespec="seconds")}))
         st["generations"][-1].update(branch=branch, tag=tag)
+        st["lineage"] = sha
         log(f"gen {G}: committed {sha[:8]} on {branch}, tagged {tag}")
     save_state(st)
     return st
@@ -345,6 +350,14 @@ def write_report(st: dict, best: dict) -> str:
     L += ["", "By aspect ratio (fixture mean):", "", "| ratio | baseline | winner |", "|---|---|---|"]
     for r in RATIOS:
         L.append(f"| {r} | {base['fixtures']['by_target'].get(r)} | {champ['fixtures']['by_target'].get(r)} |")
+    camps = st.get("campaigns") or []
+    if camps:
+        L += ["", "## Campaigns", "", f"- Campaign 1 (generations 1-{camps[0]['start_gen'] - 1}): "
+              "parameter tournament over the strategy genes."]
+        for i, c in enumerate(camps):
+            L.append(f"- Campaign {i + 2} (from generation {c['start_gen']}): {c['note'] or 'new seed'} "
+                     f"Seed {c['seed_fitness']:.2f} vs previous champion {c['previous_champion']} "
+                     f"{c['previous_fitness']:.2f}.")
     L += ["", "## Generations", "", "| gen | branch | tag | champion | fitness | delta | regression |",
           "|---|---|---|---|---|---|---|"]
     for g in st["generations"]:
@@ -372,9 +385,38 @@ def main():
     ap.add_argument("--patience", type=int, default=0,
                     help="with >0: keep going past --generations until this many gens bring no gain")
     ap.add_argument("--max-generations", type=int, default=30)
+    ap.add_argument("--reseed", action="store_true",
+                    help="start a new campaign: the seed engine becomes the champion, built on --parent")
+    ap.add_argument("--note", default="", help="what is new in this campaign (for the report)")
     a = ap.parse_args()
 
     st = load_state(a.seed_engine, git("rev-parse", a.parent))
+    if a.reseed and st["champion"] is not None:
+        G0 = len(st["generations"]) + 1
+        seed = RUNS / f"gen-{G0 - 1}" / "reseed" / "resize.py"
+        seed.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy(a.seed_engine, seed)
+        log(f"reseed: scoring {a.seed_engine}")
+        fx = evaluate(seed, seed.parent / "fixtures", "fixtures", a.workers)
+        rg = evaluate(seed, seed.parent / "regression", "regression", a.workers)
+        keep = ("mean_total", "hierarchy", "optical", "space", "readability", "overflow", "collisions",
+                "crashes", "hard_violations", "critical_tasks", "max_secs")
+        prev = st["champion"]
+        st["champion"] = {"gen": G0 - 1, "name": f"gen{G0 - 1}-reseed", "fitness": fitness(fx),
+                          "genome": read_genome(seed), "engine": str(seed),
+                          "fixtures": {k: fx.get(k) for k in keep + ("by_target", "by_tier")},
+                          "regression": {k: rg.get(k) for k in keep}, "strategy": "reseed"}
+        base = git("rev-parse", a.parent)
+        st.setdefault("campaigns", []).append({"start_gen": G0, "base": base, "note": a.note,
+                                               "seed_fitness": st["champion"]["fitness"],
+                                               "previous_champion": prev["name"],
+                                               "previous_fitness": prev["fitness"]})
+        st["parent"] = st["lineage"] = base
+        st["pending_synthesis"] = None
+        st["strength"] = 0.25
+        save_state(st)
+        log(f"reseed fitness {st['champion']['fitness']:.3f} (was {prev['fitness']:.3f}), "
+            f"regression mean {rg['mean_total']:.3f}")
     if st["champion"] is None:
         seed = RUNS / "gen-0" / "baseline" / "resize.py"
         seed.parent.mkdir(parents=True, exist_ok=True)

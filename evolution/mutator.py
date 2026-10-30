@@ -6,8 +6,11 @@ that block rewritten, so every candidate is a complete, standalone
 resize.py, the only file a submission contains.
 
 Four variant strategies, each a design hypothesis with its own genes:
-  A hero-centric anchor      optical centre of gravity, hero prominence, glow
-  B dynamic grid & zoning    columns / zones per format, shared top lines
+  A hero-centric anchor      optical centre of gravity, hero prominence, glow,
+                             product shots stacked by their visible pixels
+  B dynamic grid & zoning    columns / header zones per format, shared top
+                             lines, same-shape fidelity, banner spread, cards
+                             that re-wrap their copy
   C typography & text flow   type-scale compression, banner priority, cohesion
   D constraint & elastic     repulsion pass, clearance, spacing springs
 """
@@ -21,9 +24,10 @@ MARK = re.compile(r"(# >>> GENOME\n)(.*?)(# <<< GENOME)", re.S)
 
 FAMILIES = {
     "A": ("hero-anchor", ["optical_lift", "hero_mass", "focus_blend", "hero_floor", "image_floor",
-                          "w_hero", "w_bal", "logo_area"]),
+                          "w_hero", "w_bal", "logo_area", "ink_v"]),
     "B": ("grid-zoning", ["split_bias", "zone_top_align", "zone_header", "col_penalty", "w_struct", "w_order",
-                          "col_gap", "w_fill", "symmetry", "brand_weight"]),
+                          "col_gap", "w_fill", "symmetry", "brand_weight", "shortcut_ink", "banner_spread",
+                          "panel_reflow"]),
     "C": ("type-flow", ["type_gamma", "type_k", "priority_boost", "min_font", "min_font_frac", "text_gap",
                         "headline_lead", "w_leg", "w_size"]),
     "D": ("elastic-repulsion", ["relax_iters", "relax_clear", "relax_spring", "margin", "gap", "pad_y",
@@ -45,6 +49,8 @@ BOUNDS = {
     "focus_blend": (0.0, 1.0, "float"), "optical_lift": (0.0, 0.12, "switch"), "hero_mass": (0.0, 3.0, "switch"),
     "split_bias": (-0.8, 0.8, "float"), "zone_top_align": (0.0, 1.0, "switch"), "zone_header": (0.0, 1.0, "flag"),
     "headline_lead": (0.6, 1.8, "float"),
+    "ink_v": (0.0, 1.0, "flag"), "shortcut_ink": (0.0, 1.0, "flag"), "banner_spread": (0.0, 1.0, "switch"),
+    "panel_reflow": (0.0, 1.0, "flag"),
     "relax_iters": (0, 12, "int"), "relax_clear": (0.005, 0.05, "float"), "relax_spring": (0.0, 0.9, "switch"),
 }
 
