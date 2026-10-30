@@ -365,8 +365,9 @@ def write_report(st: dict, best: dict) -> str:
                  f"{g['delta']:+.2f} | {g['regression']:.2f} |")
     L += ["", "## Previews", ""]
     for g in st["generations"]:
-        L.append(f"- Generation {g['gen']}: [benchmarks/previews/gen-{g['gen']}.jpg]"
-                 f"(benchmarks/previews/gen-{g['gen']}.jpg)")
+        # each preview lives on its own generation branch (relative GitHub link)
+        L.append(f"- Generation {g['gen']} (`{g['branch']}`): [gen-{g['gen']}.jpg]"
+                 f"(../{g['branch']}/benchmarks/previews/gen-{g['gen']}.jpg)")
     return "\n".join(L) + "\n"
 
 

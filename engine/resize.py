@@ -1603,7 +1603,10 @@ def _relax(sim, blocks, ctx: Ctx, logo):
             sim[i]["y"] += dy
 
     def score():
-        over = crowd = 0
+        # overlaps are counted per drawn element, not per block: a block's
+        # union box (an image plus its wider caption) can overlap a neighbour's
+        # while nothing drawn does, and fewer of those must not buy a real one
+        over, crowd = set(), 0
         for i, j in itertools.combinations(range(len(groups)), 2):
             if (i, j) in layered:
                 continue
@@ -1611,7 +1614,11 @@ def _relax(sim, blocks, ctx: Ctx, logo):
             gx = max(a[0], b[0]) - min(a[2], b[2])
             gy = max(a[1], b[1]) - min(a[3], b[3])
             if gx < 0 and gy < 0:
-                over += 1
+                for p in groups[i]:
+                    for q in groups[j]:
+                        pa, qa = _ink_box(sim[p]), _ink_box(sim[q])
+                        if _inter(pa, qa) > 0:
+                            over.add((p, q))
             elif max(gx, gy) < clear:
                 crowd += 1
         return over, crowd
@@ -1677,7 +1684,7 @@ def _relax(sim, blocks, ctx: Ctx, logo):
     inside = all(-0.5 <= sim[i]["x"] and sim[i]["x"] + sim[i]["width"] <= W + 0.5
                  and -0.5 <= sim[i]["y"] and sim[i]["y"] + sim[i]["height"] <= H + 0.5
                  for g in groups for i in g)
-    if not inside or s1[0] > s0[0] or (s1[0] == s0[0] and s1[1] > s0[1]):
+    if not inside or s1[0] - s0[0] or (s1[0] == s0[0] and s1[1] > s0[1]):
         for i, (x, y) in before.items():
             sim[i]["x"], sim[i]["y"] = x, y
 

@@ -102,6 +102,82 @@ and applies to every design, with no tuning for individual designs.
   a plain fit-inside layout that still satisfies every hard rule, so one
   odd design can't take down a whole batch.
 
+### Round 3
+
+- **Product shots pack by what is drawn.** Transparent padding around a
+  picture no longer takes up layout width, so a row of products is larger
+  and evenly spaced.
+- **Columns negotiate width.** A column of long copy takes width from a
+  column that doesn't need it before anything shrinks.
+- **Short banners put the headline and CTA first.** Both get extra type
+  scale.
+- **Same-shape canvases keep the original arrangement.**
+- **Translucent circles stay in their source corner and off the product.**
+
+## Overnight evolution
+
+Every layout heuristic lives in one `GENOME` block at the top of
+`engine/resize.py`. An evolutionary tournament tunes that block, and it
+also decides whether each newer strategy is switched on.
+
+```bash
+python -m evolution.run_overnight_evolution --generations 6 --auto-branch --finalize-to final
+```
+
+- **Fixture suite** (`benchmarks/fixture_suite.py`): 9 source designs (the
+  3 official tiers plus 6 extra structures) on 7 common aspect ratios
+  (1:1, 4:5, 9:16, 16:9, 4:1, 8:1, 3:4). Candidates run through the real
+  pipeline, `python -m engine.main`, in parallel sandboxes.
+- **Judge** (`evaluator/judge_agent.py`): scores the output JSON and the
+  rendered pixels from 0 to 100. The four rubrics, 25 points each, are
+  hierarchy & focal anchoring, optical centering & gridding, negative
+  space, and collisions & readability.
+  - A usability gate sinks the score of any layout with unreadable text
+    or content shrunk into a corner.
+  - Any hard-rule violation scores 0.
+  - Calibration: naive stretch scores 18, a uniform fit-inside scores 72,
+    and this engine scores 88.6 before tuning.
+- **Mutator** (`evolution/mutator.py`): four variant strategies, each
+  mutating its own genes:
+  - A, hero-centric anchor
+  - B, dynamic grid & zoning
+  - C, typography & text flow
+  - D, elastic repulsion
+
+  A synthesis candidate also crosses the previous generation's improvers.
+- **Regression gate.** A new champion must also pass 162 ad-format tasks
+  and 15 edge cases that are never used for ranking: no crash, no rule
+  violation, no new overflow or collision, no drop in the judge's mean.
+- **Git.** Each generation is committed to `gen-<G>-<strategy>` and tagged
+  with its score. The best generation is merged into `final`.
+
+Strategies added along the way:
+
+- **Header zones.** The logo and headline span the full width, with visual
+  and copy side by side underneath.
+- **Same-shape fidelity measured on drawn text.** A box drawn slightly
+  short for its ink grows instead of forcing a re-layout.
+- **Banner spread.** On sparse banners, logo, message and CTA spread
+  across the strip.
+- **Card reflow.** An opaque card re-wraps its re-laid-out copy instead of
+  shrinking with it.
+- **Elastic clean-up pass.** Rejected whenever it would make any two drawn
+  elements overlap.
+- **Placeholders.** Missing-asset placeholders tuck into a corner.
+
+Result over 14 generations and 204 candidates:
+
+| Score | Baseline (round 3) | Final |
+|---|---|---|
+| Fixture judge score | 88.55 | 90.62 |
+| Regression judge score | 86.86 | 88.17 |
+| 8:1 leaderboard | 77.6 | 85.0 |
+| 16:9 | 86.4 | 89.8 |
+
+The final engine has 0 crashes, 0 rule violations and 0 collisions,
+both locally and in the Linux scoring image. See
+`OVERNIGHT_REPORT.md` for the full log and previews.
+
 ---
 
 # Starter repo notes
