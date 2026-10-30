@@ -58,7 +58,7 @@ A deterministic layout solver in `engine/resize.py`. No ML, no network, about
    font never renders larger), moves opaque decor off content, and clamps
    everything on-canvas.
 
-Ids, `content`, `font_family` and asset pixels are never changed. Only geometry, `font_size`, and `text_align` are.
+Ids, `content`, `font_family` and asset pixels are never changed. Only geometry, `font_size`, `text_align` and `line_height` are.
 
 ### Validation (`tools/`)
 
@@ -70,6 +70,37 @@ Ids, `content`, `font_family` and asset pixels are never changed. Only geometry,
 Across 30 real-format tests (3 samples × 10 formats), the uniform-stretch
 baseline averaged **2.2 hard-rule violations per design**. This engine has
 **0**, with zero new collisions and 100% preserved type hierarchy.
+
+### Changes
+
+Design fixes from a review of before/after outputs. Every rule is general
+and applies to every design, with no tuning for individual designs.
+
+- **Logo sizing.** On a canvas shaped like the source, the logo keeps its
+  source footprint relative to the canvas. On much wider or shorter
+  canvases it blends toward a fixed banner footprint. It never drops
+  below 22px of visible height.
+- **Glow centering.** The background's light (the brightness centroid of
+  the visible crop) is found, and the body slides so the hero sits on it.
+  The logo, the fine print and the margins are never crossed.
+- **Translucent decor.** Circles keep their size relative to the canvas
+  and their source anchor. They never touch the logo, stay off text and
+  buttons, and spread out.
+- **Buttons and fine print.** Side-by-side buttons get breathing room
+  between them. Legal fine print docks near the bottom edge, with less
+  space below it than above it.
+- **Like items stay side by side.** A row of like items (a set of
+  options, a badge strip) keeps its horizontal arrangement. It wraps into
+  a grid only when its text would become unreadable. Short captions are
+  glued to their image.
+- **Short banners.** The copy becomes a flush-left column beside the
+  visual, and a long headline sets tighter.
+- **Posters fill the page.** The growth cap on large canvases was
+  removed, so posters are no longer under-filled.
+- **Crash safety.** A zero-width or zero-height element can no longer
+  raise an error. If anything unexpected happens, the engine falls back to
+  a plain fit-inside layout that still satisfies every hard rule, so one
+  odd design can't take down a whole batch.
 
 ---
 

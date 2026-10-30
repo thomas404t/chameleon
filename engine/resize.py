@@ -59,10 +59,15 @@ STYLE = {
 
 # Target logo footprint as a share of canvas area (see _logo_scale).
 LOGO_AREA = 0.045
+# Minimum visible logo height (px), so the mark stays legible on small canvases.
+LOGO_MIN_PX = 22.0
 
 # Type-scale compression (see _bscale): exponent and boost ceiling.
 TYPE_GAMMA = 0.6
 TYPE_K = 6.0
+
+# Minimum spacing between neighbouring buttons / badges, as a share of their height.
+BUTTON_GAP = 0.3
 
 # --------------------------------------------------------------------------
 # Text measurement (uses the renderer's own wrapping so heights are exact)
@@ -188,7 +193,7 @@ def _visible_box(el: dict):
     """Where an image's visible pixels land inside its element box (fit=contain)."""
     ab = _alpha_bounds(el.get("asset_id")) if el["type"] == "image" else None
     x, y, w, h = el["x"], el["y"], el["width"], el["height"]
-    if ab is None or el.get("fit") == "cover":
+    if ab is None or el.get("fit") == "cover" or w <= 0 or h <= 0:
         return (x, y, x + w, y + h)
     fx0, fy0, fx1, fy1, ar = ab[:5]
     dw, dh = (w, w / ar) if w / h < ar else (h * ar, h)  # drawn (letterboxed) size
@@ -267,7 +272,36 @@ def _build_blocks(content: list[dict]) -> list[Block]:
                 del clusters[j]
                 merged = True
                 break
+    # 3) captions: a short text right under (or over) exactly one image travels
+    #    with it, so an option's label can never be separated from its picture
+    merged = True
+    while merged:
+        merged = False
+        for i, c in enumerate(clusters):
+            if len(c) != 1 or c[0]["type"] != "text" or c[0].get("group_id"):
+                continue
+            hits = [j for j, d in enumerate(clusters)
+                    if j != i and any(e["type"] == "image" and _is_caption(c[0], e) for e in d)]
+            if len(hits) == 1:
+                clusters[hits[0]] = clusters[hits[0]] + c
+                del clusters[i]
+                merged = True
+                break
     return [Block(c) for c in clusters]
+
+
+def _is_caption(t: dict, img: dict) -> bool:
+    if "logo" in (img.get("asset_id") or "").lower() or len(t["content"].split()) > 6:
+        return False
+    if img["width"] <= 0 or img["height"] <= 0 or t["width"] > 1.25 * img["width"]:
+        return False
+    ov = min(t["x"] + t["width"], img["x"] + img["width"]) - max(t["x"], img["x"])
+    if ov < 0.6 * t["width"]:
+        return False
+    below = t["y"] - (img["y"] + img["height"])
+    above = img["y"] - (t["y"] + t["height"])
+    g = below if below >= -0.1 * t["height"] else above
+    return -0.1 * t["height"] <= g <= 0.3 * img["height"]
 
 
 def _build_rows(blocks: list[Block]) -> list[list[Block]]:
@@ -313,6 +347,8 @@ class Ctx:
         self.logo_left = False
         self.side_align = True
         self.canvas_ratio = W / H  # the full target's shape (bodies under a masthead keep it)
+        self.banner = W / H >= 3 and H <= 250  # short, wide ad banners
+        self.fine_ids: set = set()  # fine print (legal lines), set in resize()
 
     def font_floor(self, f: float) -> float:
         """Minimum rendered size for a source font of size f. Grows with f
@@ -332,9 +368,10 @@ def _bscale(b: "Block", s: float, ctx: "Ctx") -> float:
     imgs = [e for e in b.elements if e["type"] == "image"]
     if imgs:
         short = min(min(e["width"], e["height"]) for e in imgs)
-        is_hero = any(e["id"] == ctx.hero_id for e in imgs)
-        floor = (0.55 if is_hero else 0.3) * min(ctx.W, ctx.H)
-        need = max(need, min(floor, short) / short)
+        if short > 0:
+            is_hero = any(e["id"] == ctx.hero_id for e in imgs)
+            floor = (0.55 if is_hero else 0.3) * min(ctx.W, ctx.H)
+            need = max(need, min(floor, short) / short)
         if any(e["id"] == ctx.logo_id for e in imgs):
             need = max(need, _logo_scale(b, ctx))
     # a boost must never make the block itself too big for the canvas; blocks
@@ -342,7 +379,7 @@ def _bscale(b: "Block", s: float, ctx: "Ctx") -> float:
     # so they stay visually consistent with each other
     fit_cap = getattr(b, "row_cap", None) or _fit_cap(b, ctx)
     if ctx.logo_id is not None and any(e["id"] == ctx.logo_id for e in b.elements):
-        return max(s, min(_logo_scale(b, ctx), fit_cap * 0.98))
+        return min(_logo_scale(b, ctx), fit_cap * 0.98)
     if fonts:
         # Type-scale compression: under space pressure, rendered size grows
         # like f^0.6 rather than f, so big type yields room to small type.
@@ -355,16 +392,24 @@ def _bscale(b: "Block", s: float, ctx: "Ctx") -> float:
 
 
 def _logo_scale(b: "Block", ctx: "Ctx") -> float:
-    """Scale giving the logo ~LOGO_AREA of the canvas (industry banner specs put
-    a logo at ~6-8% of small banners, e.g. 138x40 on 728x90), never wider than
-    86% / taller than 45% of the canvas, never above its source size."""
+    """Logo scale. On a canvas shaped like the source the logo keeps its source
+    footprint relative to the canvas (area ratio), so it stays clearly
+    identifiable without being overdone. As the shape changes a lot (wide or
+    short banners) it blends toward a banner-spec footprint of ~LOGO_AREA of
+    the canvas (e.g. 138x40 on 728x90). Never upscaled past the asset file."""
     vb = _visible_box(b.elements[0])
     vw, vh = max(vb[2] - vb[0], 1e-6), max(vb[3] - vb[1], 1e-6)
-    a = math.sqrt(LOGO_AREA * ctx.W * ctx.H / (vw * vh))
+    bw, bh = max(b.w, 1e-6), max(b.h, 1e-6)
+    rel = math.sqrt(ctx.W * ctx.H / (ctx.src_w * ctx.src_h))
+    spec = math.sqrt(LOGO_AREA * ctx.W * ctx.H / (vw * vh))
+    shape_change = abs(math.log2((ctx.W / ctx.H) / (ctx.src_w / ctx.src_h)))
+    t = min(1.0, max(0.0, shape_change - 1.0))  # 0 up to a 2x ratio change, 1 from 4x
+    a = rel ** (1 - t) * spec ** t
+    a = max(a, LOGO_MIN_PX / vh)  # small canvases: the mark must stay legible
     ab = _alpha_bounds(b.elements[0].get("asset_id"))
-    native = min(ab[5] / b.w, ab[6] / b.h, 2.0) if ab else 1.0  # don't upscale past the file
+    native = min(ab[5] / bw, ab[6] / bh) if ab else 1.0
     return min(a, 0.6 * ctx.W / vw, 0.45 * ctx.H / vh,
-               (ctx.W - 2 * ctx.margin) / b.w, (ctx.H - 2 * ctx.margin) / b.h, max(1.0, native))
+               (ctx.W - 2 * ctx.margin) / bw, (ctx.H - 2 * ctx.margin) / bh, max(1.0, native))
 
 
 def _fit_cap(b: "Block", ctx: "Ctx") -> float:
@@ -373,8 +418,43 @@ def _fit_cap(b: "Block", ctx: "Ctx") -> float:
     return min((ctx.W - 2 * ctx.margin) / max(b.w, 1e-6), (ctx.H - 2 * ctx.margin) / max(b.h, 1e-6))
 
 
+def _has_shape(row) -> bool:
+    return any(e["type"] == "shape" for b in row for e in b.elements)
+
+
+def _is_peer_row(row) -> bool:
+    """A row of like items (a set of options, a badge strip): same make-up and
+    similar size. Its horizontal arrangement is a design choice to keep."""
+    if len(row) < 2:
+        return False
+    if len({tuple(sorted(e["type"] for e in b.elements)) for b in row}) != 1:
+        return False
+    ws, hs = [b.w for b in row], [b.h for b in row]
+    return min(ws) > 0 and min(hs) > 0 and max(ws) <= 1.6 * min(ws) and max(hs) <= 1.35 * min(hs)
+
+
+def _is_fine_row(row, ctx) -> bool:
+    return len(row) == 1 and row[0].flexible_text and row[0].elements[0]["id"] in ctx.fine_ids
+
+
+def _col_gaps(col, row_ms, gap: float, ctx) -> list[float]:
+    """Vertical gap below each row of a column (len = rows - 1). Buttons and
+    badges get breathing room; fine print sits clearly apart from what's above."""
+    gaps = []
+    for i in range(1, len(col)):
+        g = gap
+        if _has_shape(col[i - 1]) and _has_shape(col[i]):
+            g = max(g, BUTTON_GAP * min(row_ms[i - 1][1], row_ms[i][1]))
+        if _is_fine_row(col[i], ctx):
+            g = max(g, ctx.margin)
+        gaps.append(g)
+    return gaps
+
+
 def _row_metrics(row: list[Block], s: float, col_w: float, ctx: Ctx):
-    """Return (row_width, row_height, item_sizes) or None if it can't fit col_w."""
+    """Return (row_width, row_height, item_sizes, meta) or None if it can't fit
+    col_w. meta: gap between items, "mult" (extra shrink for peer rows),
+    "stacked" (items placed vertically)."""
     gap = ctx.gap_src * s
     if len(row) == 1 and row[0].flexible_text:
         el = row[0].elements[0]
@@ -385,7 +465,7 @@ def _row_metrics(row: list[Block], s: float, col_w: float, ctx: Ctx):
         h, fits = text_box_height(el, fs, w)
         if not fits:
             return None
-        return w, h, [(w, h)]
+        return w, h, [(w, h)], {"gap": gap}
     sizes = []
     for b in row:
         bs = _bscale(b, s, ctx)
@@ -398,15 +478,47 @@ def _row_metrics(row: list[Block], s: float, col_w: float, ctx: Ctx):
             sizes.append((w, max(h, b.h * bs)))
         else:
             sizes.append((b.w * bs, b.h * bs))
-    rw = sum(w for w, _ in sizes) + gap * (len(row) - 1)
+    n = len(row)
+    btn = n > 1 and _has_shape(row)
+    hmin = min(h for _, h in sizes)
+    rgap = max(gap, BUTTON_GAP * hmin) if btn else gap
+    rw = sum(w for w, _ in sizes) + rgap * (n - 1)
     if rw <= col_w + 0.5:
-        return rw, max(h for _, h in sizes), sizes
-    # too wide side by side -> stack the row's items vertically instead
-    sw = max(w for w, _ in sizes)
-    if sw > col_w + 0.5:
-        return None
-    sh = sum(h for _, h in sizes) + gap * (len(row) - 1)
-    return sw, sh, [(w, h, "stacked") for w, h in sizes]
+        return rw, max(h for _, h in sizes), sizes, {"gap": rgap}
+    # Too wide side by side. Like items (options, badges) keep their side-by-side
+    # arrangement, shrinking to fit, as long as their text stays readable;
+    # otherwise they wrap into the widest grid that is. Other rows just stack.
+    shaped = _has_shape(row)
+    for c in (range(n, 0, -1) if _is_peer_row(row) else [1]):
+        if c == 1:
+            f = 1.0
+            if max(w for w, _ in sizes) > col_w + 0.5:
+                return None
+        else:
+            widest = max(sum(w for w, _ in sizes[i:i + c]) for i in range(0, n, c))
+            f = 1.0
+            for _ in range(3):
+                g = max(gap, BUTTON_GAP * hmin * f) if shaped else gap
+                f = min(1.0, (col_w - g * (c - 1)) / widest)
+            if f < 0.25 or not _row_legible(row, s, f, ctx):
+                continue
+        g = max(gap, BUTTON_GAP * hmin * f) if shaped else gap
+        sz = [(w * f, h * f) for w, h in sizes]
+        lines = [sz[i:i + c] for i in range(0, n, c)]
+        gw = max(sum(w for w, _ in ln) + g * (len(ln) - 1) for ln in lines)
+        gh = sum(max(h for _, h in ln) for ln in lines) + g * (len(lines) - 1)
+        return gw, gh, sz, {"gap": g, "mult": f, "grid": c}
+    return None
+
+
+def _row_legible(row, s: float, mult: float, ctx) -> bool:
+    """Would every text in the row stay near its readable floor at this shrink?"""
+    for b in row:
+        bs = _bscale(b, s, ctx) * mult
+        for e in b.elements:
+            if e["type"] == "text" and e["font_size"] * bs < 0.85 * ctx.font_floor(e["font_size"]):
+                return False
+    return True
 
 
 def _preferred_col_width(col: list[list[Block]], s: float, ctx: Ctx) -> tuple[float, float]:
@@ -463,14 +575,12 @@ def _try_layout(columns: list[list[list[Block]]], s: float, ctx: Ctx):
     plan_cols = []
     for col, cw in zip(columns, widths):
         rows = []
-        total = 0.0
         for row in col:
             m = _row_metrics(row, s, cw, ctx)
             if m is None:
                 return None
             rows.append(m)
-            total += m[1]
-        total += gap * (len(col) - 1)
+        total = sum(m[1] for m in rows) + sum(_col_gaps(col, rows, gap, ctx))
         if total > AH + 0.5:
             return None
         plan_cols.append((cw, rows, total))
@@ -512,7 +622,8 @@ def _solve(rows, ctx: Ctx, content=None, want_all=False):
     candidates and re-rank them with a design-quality objective."""
     n = len(rows)
     area_ratio = (ctx.W * ctx.H) / (ctx.src_w * ctx.src_h)
-    s_hi = min(1.6, max(1.0, math.sqrt(area_ratio)) * 1.05)
+    # big canvases (posters) may grow the design as far as it fits
+    s_hi = max(1.0, math.sqrt(area_ratio)) * 1.05
     found = []
     max_k = min(n, 6)
     for k in range(1, max_k + 1):
@@ -611,9 +722,11 @@ def _quality(cols, plan, ctx: Ctx, content, s_best: float = 1.0) -> float:
 # --------------------------------------------------------------------------
 
 
-def _place_block(b: Block, x: float, y: float, w: float, h: float, s: float, out: dict, ctx=None):
+def _place_block(b: Block, x: float, y: float, w: float, h: float, s: float, out: dict, ctx=None,
+                 mult: float = 1.0):
     if ctx is not None:
         s = _bscale(b, s, ctx)
+    s *= mult
     if b.flexible_text:
         el = out[b.elements[0]["id"]]
         el.update(x=x, y=y, width=w, height=h, font_size=max(1.0, b.elements[0]["font_size"] * s))
@@ -643,8 +756,9 @@ def _apply(cols, plan, ctx: Ctx, out: dict):
     pad_x = free_x / (k + 1)
     x = ctx.margin + pad_x
     for col, cw, (_, row_ms, total) in zip(cols, widths, plan["cols"]):
-        free_y = AH - total
+        free_y = max(0.0, AH - total)
         n = len(col)
+        gaps = _col_gaps(col, row_ms, gap, ctx)
         side = _column_side(col, ctx)
         # spread rows a little, but keep the stack visually together:
         # inner gaps grow at most to ~3x the base gap, rest is split top/bottom
@@ -652,35 +766,41 @@ def _apply(cols, plan, ctx: Ctx, out: dict):
         top = (free_y - pad_y * (n - 1)) / 2
         # default: compact stack, vertically centered
         row_ys, yy = [], ctx.margin + top
-        for _, rh, _ in row_ms:
+        for i, m in enumerate(row_ms):
             row_ys.append(yy)
-            yy += rh + gap + pad_y
+            yy += m[1] + (gaps[i] if i < n - 1 else 0.0) + pad_y
         if k == 1:
             # single column: keep each row near its relative source height
             # (top stays top, bottom stays bottom), as long as nothing collides
             anchored = []
-            for row, (_, rh, _) in zip(col, row_ms):
+            for row, m in zip(col, row_ms):
                 cy = sum((b.box[1] + b.box[3]) / 2 for b in row) / len(row)
-                ty = ctx.margin + cy / ctx.src_h * AH - rh / 2
-                anchored.append(min(max(ty, ctx.margin), ctx.H - ctx.margin - rh))
+                ty = ctx.margin + cy / ctx.src_h * AH - m[1] / 2
+                anchored.append(min(max(ty, ctx.margin), ctx.H - ctx.margin - m[1]))
             # push down to resolve overlaps, then check we still fit
             for i in range(1, n):
-                prev_bottom = anchored[i - 1] + row_ms[i - 1][1] + gap
+                prev_bottom = anchored[i - 1] + row_ms[i - 1][1] + gaps[i - 1]
                 anchored[i] = max(anchored[i], prev_bottom)
             if n and anchored[-1] + row_ms[-1][1] <= ctx.H - ctx.margin + 0.5:
                 row_ys = anchored
-        for row, (rw, rh, sizes), y in zip(col, row_ms, row_ys):
-            if sizes and len(sizes[0]) == 3:  # stacked row
-                yy = y
-                for b, (w, h, _) in zip(row, sizes):
-                    bx = x + (cw - w) / 2
+        for row, (rw, rh, sizes, meta), y in zip(col, row_ms, row_ys):
+            mult, rgap = meta.get("mult", 1.0), meta.get("gap", gap)
+            if meta.get("grid"):  # wrapped: `grid` items per line (1 = stacked)
+                c, yy = meta["grid"], y
+                for i in range(0, len(row), c):
+                    line = list(zip(row[i:i + c], sizes[i:i + c]))
+                    lw = sum(w for _, (w, _) in line) + rgap * (len(line) - 1)
+                    lh = max(h for _, (_, h) in line)
+                    cur = x + (cw - lw) / 2
                     if side == "left":
-                        bx = x
+                        cur = x
                     elif side == "right":
-                        bx = x + cw - w
-                    _place_block(b, bx, yy, w, h, s, out, ctx)
-                    _mark_col(b, out, x, cw)
-                    yy += h + gap
+                        cur = x + cw - lw
+                    for b, (w, h) in line:
+                        _place_block(b, cur, yy + (lh - h) / 2, w, h, s, out, ctx, mult)
+                        _mark_col(b, out, x, cw)
+                        cur += w + rgap
+                    yy += lh + rgap
                 continue
             # horizontal positions inside the column
             if k == 1 and n > 0 and not ctx.center_rows:
@@ -705,9 +825,9 @@ def _apply(cols, plan, ctx: Ctx, out: dict):
                 xs = []
                 for w, _ in sizes:
                     xs.append(cur)
-                    cur += w + gap
+                    cur += w + rgap
             for b, (w, h), bx in zip(row, sizes, xs):
-                _place_block(b, bx, y + (rh - h) / 2, w, h, s, out, ctx)
+                _place_block(b, bx, y + (rh - h) / 2, w, h, s, out, ctx, mult)
                 _mark_col(b, out, x, cw)
         x += cw + plan["col_gap"] + pad_x
 
@@ -717,6 +837,8 @@ def _has_hero(row, ctx) -> bool:
 
 
 def _column_side_for_text(e, ctx) -> str | None:
+    if ctx.side_align and ctx.banner:
+        return "left"
     if not ctx.side_align or ctx.canvas_ratio <= 1.2:
         return None
     a = e.get("text_align", "left")
@@ -728,6 +850,8 @@ def _column_side(col, ctx) -> str | None:
     copy was left- (or right-) aligned in the source becomes a flush block on
     that side (editorial / Taco Bell style). Portrait and square canvases keep
     the centered, Apple-style stack."""
+    if ctx.side_align and ctx.banner and sum(b.flexible_text for row in col for b in row) >= 2:
+        return "left"  # short banners: the copy reads as one flush-left column beside the visual
     if not ctx.side_align or ctx.canvas_ratio <= 1.2:
         return None
     votes = {"left": 0, "right": 0, "center": 0}
@@ -868,11 +992,163 @@ def _avoid_content(decor, content, out, ctx: Ctx):
                     break
 
 
+def _inter(a, b) -> float:
+    return max(0.0, min(a[2], b[2]) - max(a[0], b[0])) * max(0.0, min(a[3], b[3]) - max(a[1], b[1]))
+
+
+def _place_soft_decor(soft, out, content, ctx: Ctx, logo):
+    """Translucent decor (circles, blobs) frames the composition: it keeps its
+    size relative to the canvas and its source anchor (corner / edge), never
+    touches the logo, stays off text and buttons, and spreads out evenly."""
+    if not soft:
+        return
+    W, H = ctx.W, ctx.H
+    r = min(W, H) / min(ctx.src_w, ctx.src_h)
+    logo_ids = {e["id"] for e in logo.elements} if logo is not None else set()
+    prot = []
+    for e in content:
+        el = out[e["id"]]
+        if e["id"] in logo_ids:
+            prot.append((_visible_box(el), 1000.0))
+        elif e["type"] in ("text", "shape"):
+            prot.append((_rot_bbox(el), 6.0))
+        else:
+            prot.append((_visible_box(el), 0.3))  # layering over imagery is fine
+    placed, centers = [], []
+    for src in sorted(soft, key=lambda e: -e["width"] * e["height"]):
+        el = out[src["id"]]
+        w, h = src["width"] * r, src["height"] * r
+        cap = min(1.0, 0.9 * min(W, H) / max(w, h, 1e-6))
+        w, h = max(w * cap, 1.0), max(h * cap, 1.0)
+        u = min(max((src["x"] + src["width"] / 2) / ctx.src_w, 0.0), 1.0)
+        v = min(max((src["y"] + src["height"] / 2) / ctx.src_h, 0.0), 1.0)
+        best = None
+        for _ in range(8):
+            best = None
+            for i in range(11):
+                for j in range(11):
+                    x, y = max(0.0, W - w) * i / 10, max(0.0, H - h) * j / 10
+                    box, a = (x, y, x + w, y + h), w * h
+                    ov = sum(wt * _inter(box, pb) for pb, wt in prot) / a
+                    ov += sum(2.0 * _inter(box, pb) for pb in placed) / a
+                    cx, cy = (x + w / 2) / W, (y + h / 2) / H
+                    sep = min((math.hypot(cx - px, cy - py) for px, py in centers), default=1.0)
+                    cost = ov + 0.8 * math.hypot(cx - u, cy - v) - 0.4 * sep
+                    hits_logo = any(wt >= 1000 and _inter(box, pb) > 0 for pb, wt in prot)
+                    if best is None or cost < best[0]:
+                        best = (cost, x, y, hits_logo)
+            if not best[3]:
+                break
+            w, h = w * 0.8, h * 0.8
+        el.update(x=best[1], y=best[2], width=w, height=h)
+        placed.append((best[1], best[2], best[1] + w, best[2] + h))
+        centers.append(((best[1] + w / 2) / W, (best[2] + h / 2) / H))
+
+
+def _dock_fine_print(sim, content, ctx: Ctx):
+    """Fine print hugs the bottom edge: less space below it than above it."""
+    for fid in ctx.fine_ids:
+        if fid not in sim:
+            continue
+        el = sim[fid]
+        x0, x1, bottom = el["x"], el["x"] + el["width"], el["y"] + el["height"]
+        blocked = False
+        for o in content:
+            if o["id"] == fid:
+                continue
+            b = _rot_bbox(sim[o["id"]])
+            if b[1] >= bottom - 1 and min(x1, b[2]) - max(x0, b[0]) > 0:
+                blocked = True
+                break
+        if not blocked:
+            el["y"] = max(el["y"], ctx.H - 0.5 * ctx.margin - el["height"])
+
+
+@lru_cache(maxsize=64)
+def _bg_focus(asset_id: str, fit: str, W: int, H: int):
+    """Where the background's light sits on the target canvas (brightness
+    centroid of the visible crop), or None if it has no clear focal glow."""
+    if fit not in ("cover", "fill"):
+        return None
+    try:
+        from PIL import Image, ImageFilter
+
+        with Image.open(ASSETS_DIR / asset_id) as im:
+            iw, ih = im.size
+            k = 80 / max(iw, ih)
+            sw, sh = max(1, round(iw * k)), max(1, round(ih * k))
+            g = im.convert("L").resize((sw, sh)).filter(ImageFilter.GaussianBlur(3))
+        px = list(g.getdata())
+    except Exception:
+        return None
+    med = sorted(px)[len(px) // 2]
+    if fit == "cover":
+        sc = max(W / iw, H / ih)
+        cw, ch = W / sc * k, H / sc * k
+        x0, y0 = (sw - cw) / 2, (sh - ch) / 2
+    else:
+        cw, ch, x0, y0 = sw, sh, 0.0, 0.0
+    tot = sx = sy = peak = 0.0
+    for yy in range(sh):
+        if not y0 <= yy < y0 + ch:
+            continue
+        for xx in range(sw):
+            if not x0 <= xx < x0 + cw:
+                continue
+            e = px[yy * sw + xx] - med
+            if e > 2:
+                e *= e
+                tot, sx, sy, peak = tot + e, sx + e * xx, sy + e * yy, max(peak, e)
+    if tot <= 0 or peak < 64:
+        return None
+    return ((sx / tot - x0) / cw * W, (sy / tot - y0) / ch * H)
+
+
+def _center_on_focus(sim, content, ctx: Ctx, logo, focus):
+    """Slide the body vertically so its main element (hero, else headline)
+    sits on the background's light, without crossing the logo, the fine
+    print or the margins."""
+    if focus is None:
+        return
+    fixed = ({e["id"] for e in logo.elements} if logo is not None else set()) | ctx.fine_ids
+    body = [e for e in content if e["id"] not in fixed]
+    if not body:
+        return
+    prim = ctx.hero_id if ctx.hero_id and ctx.hero_id not in fixed and ctx.hero_id in sim else None
+    if prim is None:
+        texts = [e for e in body if e["type"] == "text"]
+        if not texts:
+            return
+        prim = max(texts, key=lambda e: e["font_size"])["id"]
+    pb = _rot_bbox(sim[prim])
+    dy = focus[1] - (pb[1] + pb[3]) / 2
+    bb = _union([_rot_bbox(sim[e["id"]]) for e in body])
+    lo, hi = ctx.margin - bb[1], ctx.H - ctx.margin - bb[3]
+    for oid in fixed:
+        if oid not in sim:
+            continue
+        ob = _rot_bbox(sim[oid])
+        if ob[2] <= bb[0] or ob[0] >= bb[2]:
+            continue  # beside the body, can't collide
+        if ob[3] <= bb[1] + 1:
+            lo = max(lo, ob[3] + 0.5 * ctx.margin - bb[1])
+        elif ob[1] >= bb[3] - 1:
+            hi = min(hi, ob[1] - (ctx.margin if oid in ctx.fine_ids else 0.5 * ctx.margin) - bb[3])
+        else:
+            return
+    if lo > hi:
+        return
+    dy = min(max(dy, lo), hi)
+    if abs(dy) >= 1:
+        for e in body:
+            sim[e["id"]]["y"] += dy
+
+
 def _clamp(el: dict, W: float, H: float):
     """Final guarantee: unrotated box (what the checker looks at) inside canvas.
     Images shrink proportionally so their aspect ratio is never changed."""
     if el["type"] == "image" and el.get("fit") != "cover":
-        k = min(1.0, W / el["width"], H / el["height"])
+        k = min(1.0, W / el["width"] if el["width"] > 0 else 1.0, H / el["height"] if el["height"] > 0 else 1.0)
         if k < 1.0:
             cx, cy = el["x"] + el["width"] / 2, el["y"] + el["height"] / 2
             el["width"] *= k
@@ -975,6 +1251,39 @@ def _set_row_caps(rows, ctx):
 
 
 def resize(source: dict[str, Any], target_canvas: dict[str, Any]) -> dict[str, Any]:
+    try:
+        return _resize(source, target_canvas)
+    except Exception:
+        # one odd design must never take down a whole batch: fall back to a
+        # plain fit-inside layout that still satisfies every hard rule
+        return _safe_fallback(source, target_canvas)
+
+
+def _safe_fallback(source: dict[str, Any], target_canvas: dict[str, Any]) -> dict[str, Any]:
+    W, H = target_canvas["width"], target_canvas["height"]
+    src_w = max(source["canvas"]["width"], 1)
+    src_h = max(source["canvas"]["height"], 1)
+    s = min(W / src_w, H / src_h)
+    ox, oy = (W - src_w * s) / 2, (H - src_h * s) / 2
+    elements = []
+    for el in source["elements"]:
+        o = copy.deepcopy(el)
+        try:
+            if _classify(el, src_w, src_h) == "background":
+                o.update(x=0, y=0, width=W, height=H)
+            else:
+                o.update(x=ox + el["x"] * s, y=oy + el["y"] * s,
+                         width=max(0.0, el["width"] * s), height=max(0.0, el["height"] * s))
+                if el["type"] == "text":
+                    o["font_size"] = max(1.0, el["font_size"] * s)
+            _clamp(o, W, H)
+        except Exception:
+            o.update(x=0, y=0, width=0, height=0)
+        elements.append(o)
+    return {"canvas": {"width": W, "height": H}, "elements": elements}
+
+
+def _resize(source: dict[str, Any], target_canvas: dict[str, Any]) -> dict[str, Any]:
     src_w, src_h = source["canvas"]["width"], source["canvas"]["height"]
     W, H = target_canvas["width"], target_canvas["height"]
     ctx = Ctx(src_w, src_h, W, H)
@@ -1002,6 +1311,28 @@ def resize(source: dict[str, Any], target_canvas: dict[str, Any]) -> dict[str, A
         if big["width"] * big["height"] >= 0.08 * src_w * src_h:
             ctx.hero_id = big["id"]
 
+    # fine print: the smallest text, near the bottom of the source, clearly
+    # smaller than everything else (legal lines, disclaimers)
+    texts = [e for e in by_class["content"] if e["type"] == "text"]
+    if len(texts) >= 2:
+        fmin = min(e["font_size"] for e in texts)
+        if any(e["font_size"] > 1.15 * fmin for e in texts):
+            ctx.fine_ids = {e["id"] for e in texts if e["font_size"] <= fmin + 1e-6
+                            and not e.get("group_id") and e["y"] + e["height"] / 2 > 0.8 * src_h}
+    # short banners: a long headline sets tighter so it can carry more weight
+    if ctx.banner and texts:
+        head = max(texts, key=lambda e: e["font_size"])
+        if len(head["content"].split()) > 3:
+            tight = dict(head, line_height=min(head.get("line_height", DEFAULT_LINE_HEIGHT), 1.05))
+            by_class["content"] = [tight if e["id"] == head["id"] else e for e in by_class["content"]]
+
+    focus = None
+    for el in by_class["background"]:
+        if el["type"] == "image" and el.get("asset_id"):
+            focus = _bg_focus(el["asset_id"], el.get("fit", "contain"), W, H)
+            break
+    logo = None
+
     style = dict(STYLE)
     style.update(target_canvas.get("style") or {})
     ctx.center_rows = bool(style["center_rows"])
@@ -1016,6 +1347,9 @@ def resize(source: dict[str, Any], target_canvas: dict[str, Any]) -> dict[str, A
             ctx.logo_id = logo.elements[0]["id"]
         body_blocks = [b for b in blocks if b is not logo]
         body_rows = _build_rows(body_blocks) if body_blocks else []
+        for row in body_rows:
+            if _is_peer_row(row) and any(e["id"] == ctx.hero_id for b in row for e in b.elements):
+                ctx.hero_id = None  # a set of equal options has no single hero
         rows = ([[logo]] + body_rows) if logo is not None else body_rows  # logo leads
         candidates = []  # (base_quality, sim)
 
@@ -1041,6 +1375,7 @@ def resize(source: dict[str, Any], target_canvas: dict[str, Any]) -> dict[str, A
                 bctx.logo_id = ctx.logo_id
                 bctx.side_align, bctx.logo_left = ctx.side_align, ctx.logo_left
                 bctx.canvas_ratio = ctx.canvas_ratio
+                bctx.fine_ids, bctx.banner = ctx.fine_ids, ctx.banner
                 _set_row_caps(body_rows, bctx)
                 ranked = _solve(body_rows, bctx, body_content, want_all=True) or []
                 for q, cols, plan in ranked[:6]:
@@ -1050,7 +1385,7 @@ def resize(source: dict[str, Any], target_canvas: dict[str, Any]) -> dict[str, A
                         sim[e["id"]]["y"] += bh - bctx.margin * 0.5
                     vb0 = _visible_box(logo.elements[0])
                     vis_h = max(vb0[3] - vb0[1], 1e-6)  # visible height at scale 1
-                    sc = min(bh * 0.72 / vis_h, (bh - 2) / logo.h * 1.6, max(_logo_scale(logo, ctx), plan["s"]), 1.0)
+                    sc = min(bh * 0.72 / vis_h, (bh - 2) / max(logo.h, 1e-6) * 1.6, _logo_scale(logo, ctx))
                     lw, lh = logo.w * sc, logo.h * sc
                     lx, ly = (W - lw) / 2, ctx.margin * 0.6 + (bh - lh) / 2
                     _place_block(logo, lx, ly, lw, lh, sc, sim)
@@ -1069,9 +1404,13 @@ def resize(source: dict[str, Any], target_canvas: dict[str, Any]) -> dict[str, A
             bw = style["brand_weight"]
             best = max(candidates,
                        key=lambda c: (1 - bw) * c[0] + bw * _brand_score(c[1], ctx, content, logo, cta, style))
-            _align_text(best[1], content, ctx, style)
-            for i, el in best[1].items():
-                out[i].update({k: el[k] for k in ("x", "y", "width", "height", "font_size", "text_align") if k in el})
+            sim = best[1]
+            _dock_fine_print(sim, content, ctx)
+            _center_on_focus(sim, content, ctx, logo, focus)
+            _align_text(sim, content, ctx, style)
+            for i, el in sim.items():
+                out[i].update({k: el[k] for k in ("x", "y", "width", "height", "font_size", "text_align",
+                                                  "line_height") if k in el})
         else:  # last resort: uniform fit-inside scale, centered
             s = min(W / src_w, H / src_h)
             ox, oy = (W - src_w * s) / 2, (H - src_h * s) / 2
@@ -1083,6 +1422,7 @@ def resize(source: dict[str, Any], target_canvas: dict[str, Any]) -> dict[str, A
                     o["font_size"] = max(1.0, el["font_size"] * s)
 
     _enforce_hierarchy(source["elements"], out, by_class["content"])
+    _place_soft_decor([e for e in by_class["decor"] if e["type"] == "shape"], out, by_class["content"], ctx, logo)
     _avoid_content(by_class["decor"], by_class["content"], out, ctx)
 
     elements = []
