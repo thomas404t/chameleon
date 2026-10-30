@@ -63,44 +63,41 @@ STYLE = {
 # only changes a layout when it has earned its place.
 # >>> GENOME
 GENOME = {
-    # spacing
-    "margin": 0.045,          # page margin, share of the canvas short side
-    "gap": 0.025,             # base gap between rows, share of the source short side
-    "pad_y": 2.0,             # spare height spread between rows, at most this x base gap
-    "body_gap_cap": 1.25,     # a body gap grows at most to source gap x scale x this
-    "col_gap": 0.02,          # minimum gap between columns, share of canvas width
-    "button_gap": 0.3,        # spacing between neighbouring buttons / badges, x their height
-    "text_gap": 1.0,          # gap between two stacked text rows, x base gap (cluster cohesion)
-    # type
-    "type_gamma": 0.6,        # type-scale compression exponent (see _bscale)
-    "type_k": 6.0,            # type boost ceiling
-    "priority_boost": 1.6,    # short banners: extra type scale for headline + CTA
-    "min_font": 11.0,         # legibility floor cap (px)
-    "min_font_frac": 0.09,    # legibility floor, share of the canvas short side
-    # images
-    "hero_floor": 0.55,       # hero short side floor, share of canvas short side
-    "image_floor": 0.3,       # other images' short side floor
-    "logo_area": 0.045,       # banner logo footprint, share of canvas area
-    # candidate objective (_quality) and brand rules
-    "w_leg": 0.22, "w_size": 0.18, "w_hero": 0.18, "w_order": 0.12,
-    "w_struct": 0.12, "w_bal": 0.09, "w_fill": 0.09,
-    "col_penalty": 0.94,      # stage-1 ranking: per extra column
-    "brand_weight": 0.3,
-    "symmetry": 0.6,
-    # A) hero-centric optical anchoring
-    "focus_blend": 0.5,       # tall bodies without a hero lean this far toward their band center
-    "optical_lift": 0.0,      # no background glow: lift the body's visual mass this share of H above center
-    "hero_mass": 0.0,         # optical centering weighs the hero this much more than the rest
-    # B) dynamic grid and zoning
-    "split_bias": 0.0,        # wide canvases: extra columns the structure score expects
-    "zone_top_align": 0.0,    # multi-column: 1 = columns share a top line, 0 = each centered
-    "zone_header": 0.0,       # 1 = also try logo + headline as a full-width header over the rest
-    # C) typography and text flow
-    "headline_lead": 1.0,     # headline-to-next-row gap, x the text gap (1 = same)
-    # D) constraint and elastic repulsion
-    "relax_iters": 0,         # post-pass iterations (0 = off)
-    "relax_clear": 0.02,      # minimum clearance between blocks, share of short side
-    "relax_spring": 0.0,      # pull stacked gaps toward their mean (0 = off)
+    'margin': 0.0398,
+    'gap': 0.0197,
+    'pad_y': 3.0029,
+    'body_gap_cap': 1.0732,
+    'col_gap': 0.02,
+    'button_gap': 0.3,
+    'text_gap': 1.0,
+    'type_gamma': 0.6,
+    'type_k': 6.0,
+    'priority_boost': 1.6,
+    'min_font': 11.0,
+    'min_font_frac': 0.09,
+    'hero_floor': 0.55,
+    'image_floor': 0.3,
+    'logo_area': 0.045,
+    'w_leg': 0.22,
+    'w_size': 0.18,
+    'w_hero': 0.18,
+    'w_order': 0.12,
+    'w_struct': 0.12,
+    'w_bal': 0.09,
+    'w_fill': 0.09,
+    'col_penalty': 0.94,
+    'brand_weight': 0.3,
+    'symmetry': 0.6,
+    'focus_blend': 0.5,
+    'optical_lift': 0.0,
+    'hero_mass': 0.0,
+    'split_bias': 0.0,
+    'zone_top_align': 0.0,
+    'zone_header': 0.0,
+    'headline_lead': 1.0,
+    'relax_iters': 0,
+    'relax_clear': 0.02,
+    'relax_spring': 0.0,
 }
 # <<< GENOME
 
