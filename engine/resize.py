@@ -977,7 +977,12 @@ def _solve(rows, ctx: Ctx, content=None, want_all=False):
     # big canvases (posters) may grow the design as far as it fits
     s_hi = max(1.0, math.sqrt(area_ratio)) * 1.05
     found = []
-    max_k = min(n, 6)
+    # up to 6 columns, within a budget of column splits (a design with
+    # dozens of rows would otherwise try tens of thousands of them)
+    max_k, splits = 1, 1
+    while max_k < min(n, 6) and splits + math.comb(n - 1, max_k) <= 3000:
+        splits += math.comb(n - 1, max_k)
+        max_k += 1
     for k in range(1, max_k + 1):
         for cols in _candidates(rows, k, ctx.f_ref, ctx.hero_id):
             lo, hi = 0.0, s_hi
@@ -1824,7 +1829,12 @@ def _snap_align(sim, blocks, ctx: Ctx):
     W, H, m = ctx.W, ctx.H, ctx.margin
     groups = [[e["id"] for e in b.elements] for b in blocks]
     pinned = {k for k, g in enumerate(groups) if any(i in ctx.fine_ids for i in g)}
-    box = lambda k: _union([_drawn_box(sim[i]) for i in groups[k]])
+    boxes = {}  # measured once per position: text measurement is the costly part
+
+    def box(k):
+        if k not in boxes:
+            boxes[k] = _union([_drawn_box(sim[i]) for i in groups[k]])
+        return boxes[k]
     area = lambda k: (box(k)[2] - box(k)[0]) * (box(k)[3] - box(k)[1])
     is_text = [b.flexible_text for b in blocks]
 
@@ -1892,10 +1902,12 @@ def _snap_align(sim, blocks, ctx: Ctx):
         old = hits(i)
         for e in groups[i]:
             sim[e]["x"] += d
+        boxes.pop(i, None)
         if not hits(i) <= old or any(sim[e]["x"] < -0.5 or sim[e]["x"] + sim[e]["width"] > W + 0.5
                                      for e in groups[i]):
             for e in groups[i]:
                 sim[e]["x"] -= d
+            boxes.pop(i, None)
             continue
         moved.add(i)
         fixed.add(j)
