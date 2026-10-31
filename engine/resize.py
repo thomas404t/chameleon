@@ -413,8 +413,10 @@ def _build_blocks(content: list[dict]) -> list[Block]:
     while merged:
         merged = False
         for i, j in itertools.combinations(range(len(clusters)), 2):
-            a = _union([_rot_bbox(e) for e in clusters[i]])
-            b = _union([_rot_bbox(e) for e in clusters[j]])
+            # (pictures by their visible pixels: transparent padding isn't layering)
+            vis = lambda e: _visible_box(e) if e["type"] == "image" and not e.get("rotation") else _rot_bbox(e)
+            a = _union([vis(e) for e in clusters[i]])
+            b = _union([vis(e) for e in clusters[j]])
             if _overlap_frac(a, b) > 0.5:
                 clusters[i] = clusters[i] + clusters[j]
                 del clusters[j]
@@ -452,7 +454,92 @@ def _is_caption(t: dict, img: dict) -> bool:
     return -0.1 * t["height"] <= g <= 0.3 * img["height"]
 
 
-def _build_rows(blocks: list[Block]) -> list[list[Block]]:
+def _cuts(spans, lo_key, hi_key):
+    """Split items into runs separated by clear whitespace along one axis."""
+    items = sorted(spans, key=lo_key)
+    runs, end = [], -math.inf
+    for it in items:
+        if runs and lo_key(it) < end - 1e-6:
+            runs[-1].append(it)
+        else:
+            runs.append([it])
+        end = max(end, hi_key(it)) if len(runs[-1]) > 1 else hi_key(it)
+    return runs
+
+
+def _peer_families(blocks: list[Block]) -> list[list[Block]]:
+    """Sets of three or more like items (badges, options): same make-up and
+    about the same size."""
+    fams: dict = {}
+    for b in blocks:
+        if not b.flexible_text:
+            fams.setdefault(tuple(sorted((e["type"], e.get("shape_type") or "") for e in b.elements)), []).append(b)
+    out = []
+    for fam in fams.values():
+        if len(fam) < 3:
+            continue
+        ws, hs = sorted(b.w for b in fam), sorted(b.h for b in fam)
+        mw, mh = ws[len(ws) // 2], hs[len(hs) // 2]
+        fam = [b for b in fam if 0.75 * mw <= b.w <= 1.35 * mw and 0.8 * mh <= b.h <= 1.25 * mh]
+        if len(fam) >= 3:
+            out.append(fam)
+    return out
+
+
+def _peer_grid(fam: list[Block], order: dict) -> list[list[Block]]:
+    """A family's rows: the designer's grid when it is a clean one, else the
+    items in document order, in an orderly grid."""
+    rows = _row_scan(fam)
+    n, lens = len(fam), [len(r) for r in rows]
+    clean = all(x == lens[0] for x in lens[:-1]) and lens[-1] <= lens[0]
+    if clean and (lens[0] >= 2 or n <= 4) and (n <= 4 or lens[0] >= math.ceil(math.sqrt(n))):
+        return rows
+    c = n if n <= 4 else math.ceil(math.sqrt(n))
+    fam = sorted(fam, key=lambda b: min(order.get(e["id"], 0) for e in b.elements))
+    return [fam[i:i + c] for i in range(0, n, c)]
+
+
+def _build_rows(blocks: list[Block], order: dict | None = None) -> list[list[Block]]:
+    """Reading order. Each set of like items is read as one unit, then laid
+    back out as a grid (so a badge wall that an earlier resize spread around
+    comes back orderly). A band of the design set in columns, each holding a
+    stack of items (a design already resized into columns), is read column
+    by column, left to right, instead of zig-zagging across."""
+    fams = _peer_families(blocks)
+    member = {id(b) for f in fams for b in f}
+    unit_blocks = [Block([e for b in f for e in b.elements]) for f in fams]
+    units = {id(u): f for u, f in zip(unit_blocks, fams)}
+    rows = []
+    for row in _read_rows([b for b in blocks if id(b) not in member] + unit_blocks, set(units)):
+        others = [b for b in row if id(b) not in units]
+        grids = [_peer_grid(units[id(b)], order or {}) for b in row if id(b) in units]
+        if not grids:
+            rows.append(row)
+            continue
+        if others:
+            rows.append(others)
+        for g in grids:
+            rows += g
+    return rows
+
+
+def _read_rows(blocks: list[Block], units: set) -> list[list[Block]]:
+    """Columns are read one after another when at least two of them hold a
+    stack, or when a stack holds a set of like items (`units`: ids of the
+    blocks standing for such sets); a lone visual beside a stack of copy
+    stays side by side with it."""
+    ys = lambda bs: _cuts(bs, lambda b: b.ink_y()[0], lambda b: b.ink_y()[1])
+    bands = ys(blocks)
+    if len(bands) > 1:
+        return [r for band in bands for r in _read_rows(band, units)]
+    cols = _cuts(blocks, lambda b: b.ink_x()[0], lambda b: b.ink_x()[1])
+    stacks = [c for c in cols if len(ys(c)) >= 2]
+    if len(cols) > 1 and (len(stacks) >= 2 or any(id(b) in units for c in stacks for b in c)):
+        return [r for c in cols for r in _read_rows(c, units)]
+    return _row_scan(blocks)
+
+
+def _row_scan(blocks: list[Block]) -> list[list[Block]]:
     blocks = sorted(blocks, key=lambda b: (b.box[1] + b.box[3]) / 2)
     rows: list[list[Block]] = []
     row_box = None
@@ -461,8 +548,12 @@ def _build_rows(blocks: list[Block]) -> list[list[Block]]:
             iy = min(row_box[3], b.box[3]) - max(row_box[1], b.box[1])
             # side-by-side only if they overlap vertically AND don't overlap
             # horizontally with anything already in the row (else: stacked)
+            # (by drawn ink: a caption's text box is often wider than what it
+            # draws, and a resized design's boxes can overlap where ink doesn't)
+            bx = b.ink_x()
             x_clash = any(
-                min(o.box[2], b.box[2]) - max(o.box[0], b.box[0]) > 0.1 * min(o.w, b.w)
+                min(o.ink_x()[1], bx[1]) - max(o.ink_x()[0], bx[0])
+                > 0.1 * min(o.ink_x()[1] - o.ink_x()[0], bx[1] - bx[0])
                 for o in rows[-1]
             )
             if iy > 0.3 * min(b.h, row_box[3] - row_box[1]) and not x_clash:
@@ -858,7 +949,13 @@ def _candidates(rows, k, f_ref=0.0, hero_id=None):
     column (typically badges / CTA / legal) move under the first column
     (typically logo + hero image) -- the classic 'visual + CTA | copy' ad
     layout that pure reading-order splits can never produce."""
+    # a grid of like items (rows of the same badges) stays in one column
+    glued = {i for i in range(1, len(rows)) if max(len(rows[i - 1]), len(rows[i])) >= 2
+             and not any(b.flexible_text for b in rows[i - 1] + rows[i])
+             and _is_peer_row(rows[i - 1] + rows[i])}
     for part in _partitions(len(rows), k):
+        if any(a in glued for a, _ in part[1:]):
+            continue
         cols = [rows[a:b] for a, b in part]
         yield cols
         hero_first = hero_id is not None and any(
@@ -917,7 +1014,12 @@ def _quality(cols, plan, ctx: Ctx, content, s_best: float = 1.0) -> float:
     """Design-quality objective for a fully placed candidate (0..1)."""
     sim = {e["id"]: dict(e) for e in content}
     _apply(cols, plan, ctx, sim)
-    return _score(sim, cols, ctx, content, plan["s"] / s_best if s_best > 0 else 1.0)
+    q = _score(sim, cols, ctx, content, plan["s"] / s_best if s_best > 0 else 1.0)
+    # a strip of three or more like items (badges, options) broken over
+    # several lines reads less orderly than one kept whole
+    broken = sum(1 for col, (_, rms, _) in zip(cols, plan["cols"]) for row, m in zip(col, rms)
+                 if len(row) >= 3 and _is_peer_row(row) and 0 < m[3].get("grid", len(row)) < len(row))
+    return q - 0.02 * min(broken, 3)
 
 
 def _score(sim, cols, ctx: Ctx, content, size: float) -> float:
@@ -942,8 +1044,8 @@ def _score(sim, cols, ctx: Ctx, content, size: float) -> float:
             for b in row:
                 order_out[id(b)] = (ci, i); i += 1
     blocks = [b for col in cols for row in col for b in row]
-    for b in blocks:
-        order_src[id(b)] = (b.box[1] + b.box[3]) / 2
+    for b in blocks:  # reading rank (column-aware), else vertical position
+        order_src[id(b)] = getattr(b, "rank", (b.box[1] + b.box[3]) / 2)
     pairs = agree = 0
     for a, b in itertools.combinations(blocks, 2):
         if abs(order_src[id(a)] - order_src[id(b)]) < 1e-6:
@@ -1505,6 +1607,12 @@ def _center_on_focus(sim, content, ctx: Ctx, logo, focus):
         band = (hi - lo) + (bb[3] - bb[1])
         t = GENOME["focus_blend"] * min(1.0, max(0.0, ((bb[3] - bb[1]) / max(band, 1e-6) - 0.3) / 0.3))
         dy = (1 - t) * dy + t * (lo + hi) / 2
+        # ...and copy alone is pulled mostly toward where the designer set it
+        # (a copy block set low under the logo shouldn't ride up against it)
+        if not any(e["type"] == "image" for e in body):
+            sb = _union([_rot_bbox(e) for e in body])
+            dy_src = (sb[1] + sb[3]) / 2 / ctx.src_h * ctx.H - (bb[1] + bb[3]) / 2
+            dy = 0.25 * dy + 0.75 * dy_src
     dy = min(max(dy, lo), hi)
     if abs(dy) >= 1:
         for e in body:
@@ -1687,6 +1795,110 @@ def _relax(sim, blocks, ctx: Ctx, logo):
     if not inside or s1[0] - s0[0] or (s1[0] == s0[0] and s1[1] > s0[1]):
         for i, (x, y) in before.items():
             sim[i]["x"], sim[i]["y"] = x, y
+
+
+def _drawn_box(el: dict):
+    """What is drawn, with text measured to its widest line (placed by its
+    alignment) rather than its box."""
+    if el["type"] != "text" or el.get("rotation") or not el.get("content"):
+        return _ink_box(el)
+    try:
+        tw = min(el["width"], _content_width(el))
+    except Exception:
+        return _rot_bbox(el)
+    a = el.get("text_align", "left")
+    x0 = el["x"] if a == "left" else el["x"] + el["width"] - tw if a == "right" \
+        else el["x"] + (el["width"] - tw) / 2
+    return (x0, el["y"], x0 + tw, el["y"] + el["height"])
+
+
+def _snap_align(sim, blocks, ctx: Ctx):
+    """Near-misses become alignments: when two stacked items (a badge over a
+    product, a logo over a button) almost share a left edge, centre line or
+    right edge, the smaller one slides onto that line. A single button just
+    above or below a row of like items (badges) centres on the row. Each
+    item moves at most once, and only where it lands inside the margins and
+    touches nothing new."""
+    if len(blocks) < 2:
+        return
+    W, H, m = ctx.W, ctx.H, ctx.margin
+    groups = [[e["id"] for e in b.elements] for b in blocks]
+    pinned = {k for k, g in enumerate(groups) if any(i in ctx.fine_ids for i in g)}
+    box = lambda k: _union([_drawn_box(sim[i]) for i in groups[k]])
+    area = lambda k: (box(k)[2] - box(k)[0]) * (box(k)[3] - box(k)[1])
+    is_text = [b.flexible_text for b in blocks]
+
+    def stacked(a, b):
+        oy = min(a[3], b[3]) - max(a[1], b[1])
+        gap_y = max(a[1], b[1]) - min(a[3], b[3])
+        gap_x = max(a[0], b[0]) - min(a[2], b[2])
+        return oy < 0.3 * min(a[3] - a[1], b[3] - b[1]) and gap_y < 0.3 * H and gap_x < 0.1 * W
+
+    def hits(k):
+        b = box(k)
+        return {j for j in range(len(groups)) if j != k
+                and any(_inter(_ink_box(sim[p]), _ink_box(sim[q])) > 0
+                        for p in groups[k] for q in groups[j]) and _inter(b, box(j)) > 0}
+
+    cands = []
+    for i, j in itertools.permutations(range(len(groups)), 2):
+        # i moves onto j's line: preferably the smaller of the two (when it
+        # can't move, the larger one may), never fine print
+        if i in pinned:
+            continue
+        cost = 1.0 if area(i) < area(j) or (area(i) == area(j) and i < j) else 1.5
+        a, b = box(i), box(j)
+        if not stacked(a, b):
+            continue
+        tol = min(0.07 * W, 0.6 * min(a[2] - a[0], b[2] - b[0]))
+        # pictures, badges and buttons stack on a shared centre line; a flush
+        # edge only counts where ragged text sets it
+        edge = any(is_text[k] and sim[groups[k][0]].get("text_align", "left") != "center" for k in (i, j))
+        lines = (b[0] - a[0], (b[0] + b[2] - a[0] - a[2]) / 2, b[2] - a[2]) if edge \
+            else ((b[0] + b[2] - a[0] - a[2]) / 2,)
+        for d in lines:
+            if 1.0 < abs(d) <= tol:
+                cands.append((abs(d) * cost, i, d, j))
+    # a lone button next to a row of like items centres on the row
+    rows = {}
+    for k, b in enumerate(blocks):
+        if not is_text[k]:
+            bb = box(k)
+            rows.setdefault(tuple(sorted(e["type"] for e in b.elements)), []).append(k)
+    for ks in rows.values():
+        if len(ks) < 2:
+            continue
+        ks = [k for k in ks if abs((box(k)[1] + box(k)[3]) / 2 - (box(ks[0])[1] + box(ks[0])[3]) / 2)
+              < 0.25 * (box(ks[0])[3] - box(ks[0])[1])]
+        if len(ks) < 2:
+            continue
+        u = _union([box(k) for k in ks])
+        for i in range(len(groups)):
+            if i in ks or i in pinned or is_text[i] or not any(sim[e]["type"] == "shape" for e in groups[i]):
+                continue
+            a = box(i)
+            if a[2] - a[0] >= u[2] - u[0] or not stacked(a, u):
+                continue
+            d = (u[0] + u[2] - a[0] - a[2]) / 2
+            if 1.0 < abs(d) <= 0.15 * W:
+                cands.append((abs(d) * 0.5, i, d, None))
+    moved, fixed = set(), set()
+    for _, i, d, j in sorted(cands, key=lambda c: c[0]):
+        if i in moved or i in fixed or j in moved:
+            continue
+        a = box(i)
+        if a[0] + d < m - 0.5 or a[2] + d > W - m + 0.5:
+            continue
+        old = hits(i)
+        for e in groups[i]:
+            sim[e]["x"] += d
+        if not hits(i) <= old or any(sim[e]["x"] < -0.5 or sim[e]["x"] + sim[e]["width"] > W + 0.5
+                                     for e in groups[i]):
+            for e in groups[i]:
+                sim[e]["x"] -= d
+            continue
+        moved.add(i)
+        fixed.add(j)
 
 
 def _clamp(el: dict, W: float, H: float):
@@ -1975,7 +2187,61 @@ def _wrap_panels(panels, out, content, ctx: Ctx) -> bool:
     return True
 
 
-def _resize(source: dict[str, Any], target_canvas: dict[str, Any], use_panels: bool = True) -> dict[str, Any]:
+def _corner_tags(content, src_w, src_h) -> list[tuple[list[dict], str, str]]:
+    """Rotated tags (a slanted 'SALE' ribbon) the designer tucked into a
+    corner of the canvas: [(elements, 'l'|'r', 't'|'b')]. Such a tag belongs
+    to its corner, not to the reading order."""
+    tol = 0.05 * min(src_w, src_h)
+    out = []
+    for b in _build_blocks(content):
+        if not any(e.get("rotation") for e in b.elements) or any(e["type"] == "image" for e in b.elements):
+            continue
+        x0, y0, x1, y1 = b.box
+        if (x1 - x0) * (y1 - y0) > 0.08 * src_w * src_h:
+            continue
+        hx = "l" if x0 <= tol else "r" if x1 >= src_w - tol else None
+        vy = "t" if y0 <= tol else "b" if y1 >= src_h - tol else None
+        if hx and vy:
+            out.append((b.elements, hx, vy))
+    return out
+
+
+def _pin_corner_tag(els, hx, vy, out, content, ctx: Ctx) -> bool:
+    """Place a corner tag in its corner at the fit-inside scale (kept
+    legible), with its source inset scaled alike; if something now sits
+    there, the other corner on the same side. False if both are taken."""
+    bb = _union([_rot_bbox(e) for e in els])
+    k = min(ctx.W / ctx.src_w, ctx.H / ctx.src_h)
+    fs = min((e["font_size"] for e in els if e["type"] == "text"), default=0)
+    if fs:
+        k = max(k, min(0.9 * ctx.font_floor(fs) / fs, 2.0 * k))
+    # (with a sliver of padding, so it reads as tucked in rather than cut off)
+    pad = 0.03 * min(ctx.W, ctx.H)
+    ins_x = max(pad, (bb[0] if hx == "l" else ctx.src_w - bb[2]) * k)
+    ins_y = max(pad, (bb[1] if vy == "t" else ctx.src_h - bb[3]) * k)
+    bw, bh = (bb[2] - bb[0]) * k, (bb[3] - bb[1]) * k
+    own = {e["id"] for e in els}
+    others = [_drawn_box(out[e["id"]]) for e in content if e["id"] not in own
+              and _classify(e, ctx.src_w, ctx.src_h) == "content"]
+    # (same side only: a tag slanted into its corner would lean out of a mirrored one)
+    for cy in (vy, "b" if vy == "t" else "t"):
+        x0 = max(0.0, ins_x) if hx == "l" else ctx.W - max(0.0, ins_x) - bw
+        y0 = max(0.0, ins_y) if cy == "t" else ctx.H - max(0.0, ins_y) - bh
+        box = (x0, y0, x0 + bw, y0 + bh)
+        if any(_inter(box, o) > 0 for o in others):
+            continue
+        for e in els:
+            o = out[e["id"]]
+            o.update(x=x0 + (e["x"] - bb[0]) * k, y=y0 + (e["y"] - bb[1]) * k,
+                     width=e["width"] * k, height=e["height"] * k)
+            if e["type"] == "text":
+                o["font_size"] = e["font_size"] * k
+        return True
+    return False
+
+
+def _resize(source: dict[str, Any], target_canvas: dict[str, Any], use_panels: bool = True,
+            use_tags: bool = True) -> dict[str, Any]:
     src_w, src_h = source["canvas"]["width"], source["canvas"]["height"]
     W, H = target_canvas["width"], target_canvas["height"]
     ctx = Ctx(src_w, src_h, W, H)
@@ -2052,11 +2318,24 @@ def _resize(source: dict[str, Any], target_canvas: dict[str, Any], use_panels: b
     panels = _find_panels(content) if use_panels and GENOME["panel_reflow"] >= 0.5 and reshape > 1.5 else {}
     if panels:
         content = [e for e in content if e["id"] not in panels]
+    # rotated corner tags step out too and go back to their corner afterwards
+    tags = _corner_tags(content, src_w, src_h) if use_tags else []
+    if tags:
+        tag_ids = {e["id"] for els, _, _ in tags for e in els}
+        content = [e for e in content if e["id"] not in tag_ids]
     if content:
         blocks = _build_blocks(content)
         logo, cta = _find_roles(blocks, content, src_w, src_h)
         if logo is not None:
             ctx.logo_id = logo.elements[0]["id"]
+        # a logo over a short centred text stack keeps that format on a short
+        # banner too (logo on top, copy centred beneath), instead of turning
+        # into a left-to-right banner
+        rest_ = [e for e in content if logo is None or e not in logo.elements]
+        if ctx.banner and H >= 150 and logo is not None and 1 <= len(rest_) <= 3 and all(
+                e["type"] == "text" and not e.get("group_id") and e.get("text_align") == "center"
+                for e in rest_):
+            ctx.banner = False
         if ctx.banner:
             texts_ = [e for e in content if e["type"] == "text" and not e.get("group_id")]
             if texts_:
@@ -2064,11 +2343,14 @@ def _resize(source: dict[str, Any], target_canvas: dict[str, Any], use_panels: b
             if cta is not None:
                 ctx.priority_ids |= {e["id"] for e in cta.elements}
         body_blocks = [b for b in blocks if b is not logo]
-        body_rows = _build_rows(body_blocks) if body_blocks else []
+        order = {e["id"]: i for i, e in enumerate(source["elements"])}
+        body_rows = _build_rows(body_blocks, order) if body_blocks else []
         for row in body_rows:
             if _is_peer_row(row) and any(e["id"] == ctx.hero_id for b in row for e in b.elements):
                 ctx.hero_id = None  # a set of equal options has no single hero
         rows = ([[logo]] + body_rows) if logo is not None else body_rows  # logo leads
+        for i, b in enumerate(b for r in rows for b in r):
+            b.rank = i
         candidates = []  # (base_quality, sim)
 
         # A) logo leads the first column: centered when single-column, else top-left
@@ -2137,6 +2419,7 @@ def _resize(source: dict[str, Any], target_canvas: dict[str, Any], use_panels: b
             _relax(sim, blocks, ctx, logo)
             _align_text(sim, content, ctx, style)
             _spread_banner(sim, content, ctx)
+            _snap_align(sim, blocks, ctx)
             for i, el in sim.items():
                 out[i].update({k: el[k] for k in ("x", "y", "width", "height", "font_size", "text_align",
                                                   "line_height") if k in el})
@@ -2150,9 +2433,12 @@ def _resize(source: dict[str, Any], target_canvas: dict[str, Any], use_panels: b
                 if el["type"] == "text":
                     o["font_size"] = max(1.0, el["font_size"] * s)
 
+    for els, hx, vy in tags:
+        if not _pin_corner_tag(els, hx, vy, out, by_class["content"], ctx):
+            return _resize(source, target_canvas, use_panels, use_tags=False)
     _enforce_hierarchy(source["elements"], out, by_class["content"])
     if panels and not _wrap_panels(panels, out, by_class["content"], ctx):
-        return _resize(source, target_canvas, use_panels=False)
+        return _resize(source, target_canvas, use_panels=False, use_tags=use_tags)
     _place_soft_decor([e for e in by_class["decor"] if e["type"] == "shape"], out, by_class["content"], ctx, logo)
     _avoid_content(by_class["decor"], by_class["content"], out, ctx)
 

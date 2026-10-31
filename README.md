@@ -114,6 +114,35 @@ and applies to every design, with no tuning for individual designs.
 - **Same-shape canvases keep the original arrangement.**
 - **Translucent circles stay in their source corner and off the product.**
 
+### Round 4 (chaos gauntlet review)
+
+From a visual review of the adversarial chaos-gauntlet outputs:
+
+- **Near-misses snap into alignment.** When two stacked items almost share
+  a centre line or edge (a badge over the product, the logo over a badge),
+  the smaller one slides onto it. A lone button under a row of badges
+  centres on the row. A move is kept only if it stays inside the margins
+  and touches nothing new.
+- **Round trips stay orderly.** Rows are detected by drawn ink, not padded
+  boxes, so a product row with wide captions stays one row. A set of like
+  items (a badge wall) is read as one unit and laid back out as a grid,
+  and the grid is never split across columns. A band already set in
+  columns is read column by column. Resizing a design back and forth no
+  longer staircases the products or scatters the badges.
+- **Copy-only bodies keep their place.** On a background with a glow, a
+  text-only body is pulled mostly toward where the designer set it, so it
+  no longer rides up against the logo.
+- **Logo on top, copy centred beneath, on short banners too**, when the
+  design is just a logo over a short centred text stack (banners at least
+  150 px tall).
+- **Rotated corner tags stay in their corner.** A slanted "SALE" ribbon
+  tucked into a corner goes back to that corner at the fit-inside scale.
+  If copy now sits there, it moves to the other corner on the same side.
+
+Fixtures 90.62 → 90.91 and regression 88.17 → 88.55 on the judge. In the
+Linux scoring image they score 90.78 and 88.42, with 0 crashes, rule
+violations and collisions. 500 fuzzed designs give 0 failures.
+
 ## Overnight evolution
 
 Every layout heuristic lives in one `GENOME` block at the top of
