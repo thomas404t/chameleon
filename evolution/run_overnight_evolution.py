@@ -13,7 +13,10 @@ Each generation:
      edge cases it was never selected on: no crash, no hard violation, no
      new overflow or collision, no drop in the judge's mean) to replace the
      champion;
-  5. the generation is committed to branch gen-<G>-<strategy> and tagged
+  5. with --chaos, it must also survive the chaos gauntlet
+     (benchmarks/chaos_gauntlet.py): a crash, a hard-rule violation or a
+     text occlusion on any adversarial task disqualifies it;
+  6. the generation is committed to branch gen-<G>-<strategy> and tagged
      with its score.
 Finally the best generation is merged into `--finalize-to` (checked out)
 and OVERNIGHT_REPORT.md is written.
@@ -241,6 +244,12 @@ def run_generation(G: int, st: dict, a) -> dict:
         reg = evaluate(Path(r["engine"]), out, "regression", a.workers)
         ok, why = gate(reg, champ["regression"])
         log(f"  gen {G} gate {r['name']}: {why} (regression mean {reg['mean_total']:.3f})")
+        if ok and a.chaos:
+            from benchmarks.chaos_gauntlet import evaluate as chaos_evaluate
+            ch = chaos_evaluate(Path(r["engine"]), out.parent / "chaos", a.workers)
+            if ch["disqualified"]:
+                ok, why = False, f"chaos gauntlet: {len(ch['disqualified_tasks'])} task(s), {ch['reason']}"
+            log(f"  gen {G} chaos {r['name']}: {'pass' if ok else why}")
         if ok:
             winner = r
             break
@@ -389,6 +398,8 @@ def main():
     ap.add_argument("--reseed", action="store_true",
                     help="start a new campaign: the seed engine becomes the champion, built on --parent")
     ap.add_argument("--note", default="", help="what is new in this campaign (for the report)")
+    ap.add_argument("--chaos", action="store_true",
+                    help="a new champion must also survive the chaos gauntlet (benchmarks/chaos_gauntlet.py)")
     a = ap.parse_args()
 
     st = load_state(a.seed_engine, git("rev-parse", a.parent))

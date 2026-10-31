@@ -78,7 +78,7 @@ def tasks(set_name: str) -> list[Path]:
     return sorted(d.glob("*.json"))
 
 
-def _sandbox(d: Path, engine: Path, task_files: list[Path]) -> None:
+def _sandbox(d: Path, engine: Path, task_files: list[Path], brand_kit: Path = ROOT / "brand_kit") -> None:
     shutil.rmtree(d, ignore_errors=True)
     (d / "engine").mkdir(parents=True)
     (d / "input").mkdir()
@@ -86,8 +86,8 @@ def _sandbox(d: Path, engine: Path, task_files: list[Path]) -> None:
     shutil.copy(ROOT / "engine" / "__init__.py", d / "engine" / "__init__.py")
     shutil.copy(ROOT / "engine" / "main.py", d / "engine" / "main.py")
     shutil.copy(engine, d / "engine" / "resize.py")
-    for name in ("renderer", "brand_kit"):
-        os.symlink(ROOT / name, d / name)
+    os.symlink(ROOT / "renderer", d / "renderer")
+    os.symlink(brand_kit, d / "brand_kit")
     for t in task_files:
         shutil.copy(t, d / "input" / t.name)
 
@@ -96,8 +96,10 @@ _LINE = re.compile(r"^\[(?P<name>.+?)\.json\] (?P<status>.+?) in (?P<secs>[\d.]+
 
 
 def run_engine(engine: Path, task_files: list[Path], out: Path, shards: int = 12,
-               python: str = sys.executable, timeout: int = 3600) -> dict:
+               python: str = sys.executable, timeout: int = 3600, brand_kit: Path = ROOT / "brand_kit",
+               retry_timeout: int = 600) -> dict:
     """Run `python -m engine.main` for the candidate over the tasks, sharded.
+    `brand_kit` replaces the repo's brand kit (e.g. one with extra assets).
     Collects out/json/<task>.json, out/png/<task>.png; returns
     {task: {"secs": .., "status": ..} | {"crash": ..}}."""
     engine = Path(engine).resolve()
@@ -112,7 +114,7 @@ def run_engine(engine: Path, task_files: list[Path], out: Path, shards: int = 12
 
     def launch(group, tag):
         d = box / tag
-        _sandbox(d, engine, group)
+        _sandbox(d, engine, group, brand_kit)
         log = open(d / "log.txt", "w")
         p = subprocess.Popen([python, "-m", "engine.main"], cwd=d, stdout=log, stderr=subprocess.STDOUT)
         return p, d, group, log
@@ -143,7 +145,7 @@ def run_engine(engine: Path, task_files: list[Path], out: Path, shards: int = 12
     for i, t in enumerate(missing):
         p, d, group, log = launch([t], f"retry{i}")
         try:
-            p.wait(timeout=600)
+            p.wait(timeout=retry_timeout)
         except subprocess.TimeoutExpired:
             p.kill()
         log.close()

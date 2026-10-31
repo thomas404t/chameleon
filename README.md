@@ -66,6 +66,24 @@ Ids, `content`, `font_family` and asset pixels are never changed. Only geometry,
   metrics (collisions, min font, hierarchy, hero size, fill, balance).
 - `python -m tools.fuzz 500`: 500 random designs × random targets.
   Current result: **0 crashes, 0 rule violations**, slowest about 1.3s.
+- **Chaos gauntlet** (`benchmarks/chaos_gauntlet.py`): adversarial
+  red-team tasks. They cover same-size and fixed-point resizes, round
+  trips, canvases 1 px either side of every aspect-ratio threshold, extreme
+  scales (38×38 up to 32768²), ribbon ↔ ticker, non-rectangular safe zones
+  (circle, arch, annulus, star, bottle), and ten "black swan" designs.
+  - `python -m benchmarks.chaos_gauntlet --build` writes the tasks to
+    `input/chaos/`. The official runner only reads `input/*.json`, so they
+    never enter a submission run.
+  - `python -m benchmarks.chaos_gauntlet --run` runs the engine over them
+    through the real pipeline and writes contact sheets to
+    `benchmarks/runs/chaos/latest/sheets/`.
+  - `--verify` adds automated geometry and pixel checks. These haven't
+    been calibrated yet, so the outputs were graded by eye.
+  - The latest run: 331 of 334 outputs complete. The three 32768² tasks
+    crash in the bundled renderer (PIL's image-size guard), not in the
+    engine.
+  - `--chaos` on `evolution/run_overnight_evolution.py` adds the gauntlet
+    to the tournament's gate. It is off by default.
 
 Across 30 real-format tests (3 samples × 10 formats), the uniform-stretch
 baseline averaged **2.2 hard-rule violations per design**. This engine has
